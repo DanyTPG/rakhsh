@@ -394,11 +394,13 @@ decoy = true
 # Read by the dialling side only. For a different carrier, use a [[link]].
 
 link_policy = "failover"
-# How lanes pick among several links: failover (the default) or spread.
+# How lanes pick among several links: failover (the default), spread or adaptive.
 #   failover  every lane prefers the first link, and moves back to it once
 #             it recovers.
 #   spread    lane n starts its attempts at link n, so the lanes end up
 #             spread across the links that work.
+#   adaptive  lanes spread across links and dynamically weight/migrate streams
+#             based on measured throughput, RTT and packet loss.
 
 link_timeout = 10
 # How long, in seconds, one attempt on one link may take before the next link

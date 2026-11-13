@@ -46,6 +46,7 @@ impl Point {
 pub enum Policy {
     Failover,
     Spread,
+    Adaptive,
 }
 
 impl Policy {
@@ -53,8 +54,9 @@ impl Policy {
         match s.map(str::trim) {
             None | Some("failover") => Ok(Policy::Failover),
             Some("spread") => Ok(Policy::Spread),
+            Some("adaptive") => Ok(Policy::Adaptive),
             Some(other) => {
-                bail!("link_policy must be \"failover\" or \"spread\" (got \"{other}\")")
+                bail!("link_policy must be \"failover\", \"spread\", or \"adaptive\" (got \"{other}\")")
             }
         }
     }
@@ -298,7 +300,7 @@ impl Dialer {
 
     fn order(&self, lane: usize) -> Vec<usize> {
         let n = self.points.len();
-        let shift = if self.policy == Policy::Spread {
+        let shift = if self.policy == Policy::Spread || self.policy == Policy::Adaptive {
             lane % n
         } else {
             0

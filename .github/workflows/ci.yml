@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/checkout@v5
         with:
-          repository: CluvexStudio/shabdiz
+          repository: DanyTPG/shabdiz
           path: shabdiz
           ssh-key: ${{ secrets.SHABDIZ_SSH_KEY }}
           token: ${{ secrets.SHABDIZ_TOKEN || github.token }}
@@ -83,7 +83,7 @@ jobs:
 
       - uses: actions/checkout@v5
         with:
-          repository: CluvexStudio/shabdiz
+          repository: DanyTPG/shabdiz
           path: shabdiz
           ssh-key: ${{ secrets.SHABDIZ_SSH_KEY }}
           token: ${{ secrets.SHABDIZ_TOKEN || github.token }}

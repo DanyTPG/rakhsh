@@ -53,7 +53,7 @@ rakhsh check -c entry.toml        # lists the links, in order
 
 | key | default | |
 |---|---|---|
-| `link_policy` | `"failover"` | `"failover"`: every lane prefers the first link that works. `"spread"`: lane *n* prefers link *n mod links*, so bandwidth and risk are spread across the carriers; each lane still falls back and moves back up. |
+| `link_policy` | `"failover"` | `"failover"`: every lane prefers the first link that works. `"spread"`: lane *n* prefers link *n mod links*. `"adaptive"`: lanes spread across links, dynamic power-of-two choice selection biases streams to the highest throughput / lowest RTT lanes, and severely throttled lanes have active streams migrated off them live. |
 | `link_timeout` | `10` | seconds one attempt (dial + handshake) may take |
 | `link_probe` | `30` | seconds between checks for a better link while on a fallback; `0` = never move back |
 

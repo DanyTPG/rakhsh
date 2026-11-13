@@ -51,6 +51,11 @@ struct LaneInfo {
     pongs: u64,
     waiting: bool,
     last_ping: Option<Instant>,
+    bytes_tx: u64,
+    bytes_rx: u64,
+    rate_bps: f64,
+    last_rate_bytes: u64,
+    score: f64,
 }
 
 impl LaneInfo {
@@ -153,6 +158,26 @@ pub fn init(cfg: &Config, role: &str) -> Arc<Metrics> {
             last_rx = rx;
             m.peak_tx_bps.fetch_max(tx_bps, Relaxed);
             m.peak_rx_bps.fetch_max(rx_bps, Relaxed);
+            {
+                let mut lanes = m.lanes.lock().unwrap();
+                for lane in lanes.values_mut() {
+                    let cur = lane.bytes_tx.wrapping_add(lane.bytes_rx);
+                    let delta = cur.wrapping_sub(lane.last_rate_bytes) as f64;
+                    lane.last_rate_bytes = cur;
+                    let cur_bps = (delta * 8.0) / dt;
+                    lane.rate_bps = if lane.rate_bps <= 0.0 {
+                        cur_bps
+                    } else {
+                        0.3 * cur_bps + 0.7 * lane.rate_bps
+                    };
+
+                    let rtt = lane.rtt_ms.unwrap_or(80.0).max(1.0);
+                    let loss = lane.loss_pct();
+                    let loss_factor = (1.0 - (loss / 100.0)).max(0.01);
+                    let effective_rate = (lane.rate_bps / 1_000_000.0).max(1.0);
+                    lane.score = (effective_rate / (rtt * rtt * 0.0001)) * loss_factor;
+                }
+            }
             let (cpu_pct, sys_cpu_pct) = m.cpu.lock().unwrap().tick(dt);
             let (rss_kb, _) = self_mem();
             let (mt, ma) = sys_mem();
@@ -220,6 +245,27 @@ impl Metrics {
     pub fn lane_down(&self, id: u64) {
         self.lanes_up.fetch_sub(1, Relaxed);
         self.lanes.lock().unwrap().remove(&id);
+    }
+
+    pub fn lane_tx(&self, id: u64, bytes: usize) {
+        if let Some(l) = self.lanes.lock().unwrap().get_mut(&id) {
+            l.bytes_tx = l.bytes_tx.wrapping_add(bytes as u64);
+        }
+    }
+
+    pub fn lane_rx(&self, id: u64, bytes: usize) {
+        if let Some(l) = self.lanes.lock().unwrap().get_mut(&id) {
+            l.bytes_rx = l.bytes_rx.wrapping_add(bytes as u64);
+        }
+    }
+
+    pub fn lane_score(&self, id: u64) -> f64 {
+        self.lanes
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|l| l.score)
+            .unwrap_or(1.0)
     }
 
     pub fn ping_sent(&self, id: u64) {
@@ -293,6 +339,8 @@ impl Metrics {
                 rtt_ms: l.rtt_ms.map(round1),
                 jitter_ms: round1(l.jitter_ms),
                 loss_pct: round1(l.loss_pct()),
+                rate_mbps: round1(l.rate_bps / 1_000_000.0),
+                score: round1(l.score),
             })
             .collect();
         let exit = self.role == "exit";
@@ -425,6 +473,10 @@ pub struct LinkSnap {
     pub rtt_ms: Option<f64>,
     pub jitter_ms: f64,
     pub loss_pct: f64,
+    #[serde(default)]
+    pub rate_mbps: f64,
+    #[serde(default)]
+    pub score: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Default)]
@@ -1010,12 +1062,14 @@ pub fn print_table(s: &Snapshot) {
                 .map(|r| format!("{r:.1} ms",))
                 .unwrap_or_else(|| "—".into());
             println!(
-                "    #{:<4}{:<10} up {:<8} rtt {rtt}  jitter {:.1} ms  loss {:.1}%",
+                "    #{:<4}{:<10} up {:<8} rtt {rtt:<10} jitter {:.1} ms  loss {:.1}%  rate {:.1} Mbps  score {:.1}",
                 l.id,
                 l.label,
                 dur(l.up_secs),
                 l.jitter_ms,
-                l.loss_pct
+                l.loss_pct,
+                l.rate_mbps,
+                l.score,
             );
         }
     }

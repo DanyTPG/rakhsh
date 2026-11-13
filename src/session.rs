@@ -109,17 +109,26 @@ pub fn spawn_writer(
     mut tx: BoxTx,
     enc: Enc,
     mut rx: mpsc::Receiver<Vec<u8>>,
+    lane_id: u64,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(mut plain) = rx.recv().await {
+            let len = plain.len();
             enc.seal_in_place(&mut plain);
             if tx.send(plain).await.is_err() {
                 break;
             }
+            if let Some(m) = crate::status::get() {
+                m.lane_tx(lane_id, len);
+            }
             while let Ok(mut plain) = rx.try_recv() {
+                let len = plain.len();
                 enc.seal_in_place(&mut plain);
                 if tx.send(plain).await.is_err() {
                     return;
+                }
+                if let Some(m) = crate::status::get() {
+                    m.lane_tx(lane_id, len);
                 }
             }
             if tx.flush().await.is_err() {

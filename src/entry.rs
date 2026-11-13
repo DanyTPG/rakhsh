@@ -38,8 +38,25 @@ impl Pool {
         if v.is_empty() {
             return None;
         }
-        let i = self.rr.fetch_add(1, SeqCst) % v.len();
-        Some(v[i].clone())
+        if v.len() == 1 {
+            return Some(v[0].clone());
+        }
+        let n = v.len();
+        let idx1 = self.rr.fetch_add(1, SeqCst) % n;
+        let idx2 = self.rr.fetch_add(1, SeqCst) % n;
+        let s1 = &v[idx1];
+        let s2 = &v[idx2];
+        let score1 = crate::status::get()
+            .map(|m| m.lane_score(s1.lane_id))
+            .unwrap_or(1.0);
+        let score2 = crate::status::get()
+            .map(|m| m.lane_score(s2.lane_id))
+            .unwrap_or(1.0);
+        if score1 >= score2 {
+            Some(s1.clone())
+        } else {
+            Some(s2.clone())
+        }
     }
     fn remove(&self, lane_id: u64) {
         self.lanes.lock().unwrap().retain(|s| s.lane_id != lane_id);
@@ -149,7 +166,7 @@ async fn serve_entry_lane(
         l3.add_lane(out_tx.clone());
     }
     let mut tasks = LaneTasks::default();
-    tasks.add(spawn_writer(tx, enc.clone(), out_rx));
+    tasks.add(spawn_writer(tx, enc.clone(), out_rx, lane_id));
     if let Some(h) = spawn_heartbeat(out_tx.clone(), hb, lane_id) {
         tasks.add(h);
     }
@@ -192,6 +209,9 @@ async fn serve_entry_lane(
             Ok(p) => p,
             Err(_) => break,
         };
+        if let Some(m) = crate::status::get() {
+            m.lane_rx(lane_id, plain.len());
+        }
         if let Some(h) = &pool.hub {
             if plain.first().is_some_and(|t| *t >= resume::R_FIRST) {
                 h.on_frame(lane_id, &plain).await;

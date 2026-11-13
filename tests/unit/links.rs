@@ -12,6 +12,7 @@ fn penalties_double_then_cap() {
 fn policy_parses_and_rejects_typos() {
     assert_eq!(Policy::parse(None).unwrap(), Policy::Failover);
     assert_eq!(Policy::parse(Some("spread")).unwrap(), Policy::Spread);
+    assert_eq!(Policy::parse(Some("adaptive")).unwrap(), Policy::Adaptive);
     assert!(Policy::parse(Some("race")).is_err());
 }
 

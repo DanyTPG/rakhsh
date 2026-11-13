@@ -287,8 +287,31 @@ impl HubState {
         if self.lanes.is_empty() {
             return None;
         }
+        if self.lanes.len() == 1 {
+            return Some(self.lanes[0].clone());
+        }
+
+        let n = self.lanes.len();
+        let idx1 = self.rr % n;
         self.rr = self.rr.wrapping_add(1);
-        Some(self.lanes[self.rr % self.lanes.len()].clone())
+        let idx2 = self.rr % n;
+        self.rr = self.rr.wrapping_add(1);
+
+        let lane1 = &self.lanes[idx1];
+        let lane2 = &self.lanes[idx2];
+
+        let score1 = crate::status::get()
+            .map(|m| m.lane_score(lane1.id))
+            .unwrap_or(1.0);
+        let score2 = crate::status::get()
+            .map(|m| m.lane_score(lane2.id))
+            .unwrap_or(1.0);
+
+        if score1 >= score2 {
+            Some(lane1.clone())
+        } else {
+            Some(lane2.clone())
+        }
     }
 }
 
@@ -386,6 +409,59 @@ impl Hub {
                 s.abort(true).await;
             } else if let (Some(_), Some(l)) = (s.detached_for(), lane.clone()) {
                 s.spawn_attach(l);
+            }
+        }
+
+        // Adaptive stream migration:
+        // When multiple lanes are established, monitor quality scores.
+        // If a lane suffers severe throttling (< 15% of the best lane's score,
+        // with the best lane score > 2.0), migrate active streams off the throttled lane.
+        let migration_plan: Option<(u64, LaneRef)> = {
+            let st = self.st.lock().unwrap();
+            if st.lanes.len() >= 2 {
+                if let Some(m) = crate::status::get() {
+                    let mut scores: Vec<(u64, f64, LaneRef)> = st
+                        .lanes
+                        .iter()
+                        .map(|l| (l.id, m.lane_score(l.id), l.clone()))
+                        .collect();
+                    scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    let (best_id, best_score, best_lane) = &scores[0];
+                    let (worst_id, worst_score, _) = &scores[scores.len() - 1];
+                    if *best_score > 2.0 && *worst_score < (*best_score * 0.15) {
+                        Some((*worst_id, best_lane.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        if let Some((throttled_id, target_lane)) = migration_plan {
+            let to_migrate: Vec<Arc<RStream>> = {
+                let st = self.st.lock().unwrap();
+                st.streams
+                    .values()
+                    .filter(|s| {
+                        let l = s.link.lock().unwrap();
+                        l.lane.as_ref().is_some_and(|x| x.id == throttled_id)
+                    })
+                    .take(2)
+                    .cloned()
+                    .collect()
+            };
+            for s in to_migrate {
+                if s.detach_if(throttled_id) {
+                    info!(
+                        "adaptive policy: evicting stream {:x} from throttled lane {} -> migrating to lane {}",
+                        s.id, throttled_id, target_lane.id
+                    );
+                    s.spawn_attach(target_lane.clone());
+                }
             }
         }
     }

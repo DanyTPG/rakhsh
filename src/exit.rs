@@ -132,7 +132,7 @@ async fn serve_exit_lane(tx: BoxTx, mut rx: BoxRx, lane_id: u64, ctx: ExitCtx) -
         l3.add_lane(out_tx.clone());
     }
     let mut tasks = LaneTasks::default();
-    tasks.add(spawn_writer(tx, enc.clone(), out_rx));
+    tasks.add(spawn_writer(tx, enc.clone(), out_rx, lane_id));
     if let Some(h) = spawn_heartbeat(out_tx.clone(), hb, lane_id) {
         tasks.add(h);
     }
@@ -189,6 +189,9 @@ async fn serve_exit_lane(tx: BoxTx, mut rx: BoxRx, lane_id: u64, ctx: ExitCtx) -
             Ok(p) => p,
             Err(_) => break,
         };
+        if let Some(m) = crate::status::get() {
+            m.lane_rx(lane_id, plain.len());
+        }
         if let Some(h) = hub {
             if plain.first().is_some_and(|t| *t >= resume::R_FIRST) {
                 h.on_frame(lane_id, &plain).await;
