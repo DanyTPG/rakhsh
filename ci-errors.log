@@ -1,0 +1,875 @@
+== fmt ==
+Diff in /home/runner/work/rakhsh/rakhsh/rakhsh/src/dgram.rs:829:
+         let target = target.to_string();
+         tcp_tasks.push(tokio::spawn(async move {
+             loop {
+-                let Ok((conn, _)) = l.accept().await else { break };
++                let Ok((conn, _)) = l.accept().await else {
++                    break;
++                };
+                 if mux.snd.lock().expect("snd").len() >= TCP_MAX_CONNS {
+                     continue;
+                 }
+Diff in /home/runner/work/rakhsh/rakhsh/rakhsh/src/dgram.rs:1302:
+ 
+     // ---- local-connection bridging (both roles) --------------------------
+ 
+-    async fn bridge_conn(
+-        self: &Arc<Self>,
+-        sid: u32,
+-        conn: tokio::net::TcpStream,
+-        target: String,
+-    ) {
++    async fn bridge_conn(self: &Arc<Self>, sid: u32, conn: tokio::net::TcpStream, target: String) {
+         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+         let _ = conn.set_nodelay(true);
+         let (mut r, mut w) = conn.into_split();
+Diff in /home/runner/work/rakhsh/rakhsh/rakhsh/src/resume.rs:425:
+                         .iter()
+                         .map(|l| (l.id, m.lane_score(l.id), l.clone()))
+                         .collect();
+-                    scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
++                    scores
++                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                     let (best_id, best_score, best_lane) = &scores[0];
+                     let (worst_id, worst_score, _) = &scores[scores.len() - 1];
+                     if *best_score > 2.0 && *worst_score < (*best_score * 0.15) {
+== check ==
+[1m[92m    Updating[0m crates.io index
+[1m[92m    Updating[0m git repository `https://github.com/plabayo/rama`
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m aead v0.5.2
+[1m[92m  Downloaded[0m errno v0.3.14
+[1m[92m  Downloaded[0m fastrand v2.5.0
+[1m[92m  Downloaded[0m find-msvc-tools v0.1.15
+[1m[92m  Downloaded[0m fastbloom v0.17.0
+[1m[92m  Downloaded[0m heck v0.5.0
+[1m[92m  Downloaded[0m ipnet v2.12.2
+[1m[92m  Downloaded[0m http-body v1.1.0
+[1m[92m  Downloaded[0m httparse v1.10.1
+[1m[92m  Downloaded[0m mimalloc v0.1.52
+[1m[92m  Downloaded[0m openssl-probe v0.2.1
+[1m[92m  Downloaded[0m lazy_static v1.5.1
+[1m[92m  Downloaded[0m paste v1.0.15
+[1m[92m  Downloaded[0m generic-array v0.14.7
+[1m[92m  Downloaded[0m once_cell v1.21.4
+[1m[92m  Downloaded[0m futures-io v0.3.34
+[1m[92m  Downloaded[0m moka v0.12.16
+[1m[92m  Downloaded[0m asn1-rs-impl v0.2.0
+[1m[92m  Downloaded[0m jiff v0.2.38
+[1m[92m  Downloaded[0m want v0.3.2
+[1m[92m  Downloaded[0m asn1-rs-derive v0.6.0
+[1m[92m  Downloaded[0m asynk-strim v0.1.5
+[1m[92m  Downloaded[0m clap_lex v1.1.1
+[1m[92m  Downloaded[0m time-core v0.1.9
+[1m[92m  Downloaded[0m atomic-waker v1.1.2
+[1m[92m  Downloaded[0m wildcard v0.3.0
+[1m[92m  Downloaded[0m async-trait v0.1.92
+[1m[92m  Downloaded[0m deranged v0.5.9
+[1m[92m  Downloaded[0m psl-types v2.0.11
+[1m[92m  Downloaded[0m autocfg v1.5.1
+[1m[92m  Downloaded[0m chacha20 v0.10.2
+[1m[92m  Downloaded[0m oid-registry v0.8.1
+[1m[92m  Downloaded[0m opaque-debug v0.3.1
+[1m[92m  Downloaded[0m proc-macro2 v1.0.107
+[1m[92m  Downloaded[0m bitflags v1.3.2
+[1m[92m  Downloaded[0m base64 v0.22.1
+[1m[92m  Downloaded[0m crossbeam-channel v0.5.17
+[1m[92m  Downloaded[0m crypto-common v0.2.2
+[1m[92m  Downloaded[0m hyper-rustls v0.27.10
+[1m[92m  Downloaded[0m lru-slab v0.1.3
+[1m[92m  Downloaded[0m defmt-parser v1.1.0
+[1m[92m  Downloaded[0m displaydoc v0.2.7
+[1m[92m  Downloaded[0m equivalent v1.0.3
+[1m[92m  Downloaded[0m proc-macro-crate v3.5.0
+[1m[92m  Downloaded[0m tungstenite v0.30.0
+[1m[92m  Downloaded[0m webpki-root-certs v1.0.10
+[1m[92m  Downloaded[0m webpki-roots v1.0.10
+[1m[92m  Downloaded[0m winnow v1.0.4
+[1m[92m  Downloaded[0m aho-corasick v1.1.5
+[1m[92m  Downloaded[0m blake3 v1.8.7
+[1m[92m  Downloaded[0m crossbeam-utils v0.8.23
+[1m[92m  Downloaded[0m crypto-common v0.1.7
+[1m[92m  Downloaded[0m ctutils v0.4.5
+[1m[92m  Downloaded[0m endian-type v0.2.0
+[1m[92m  Downloaded[0m futures-sink v0.3.34
+[1m[92m  Downloaded[0m futures-util v0.3.34
+[1m[92m  Downloaded[0m getrandom v0.4.3
+[1m[92m  Downloaded[0m hashbrown v0.17.1
+[1m[92m  Downloaded[0m http-body-util v0.1.5
+[1m[92m  Downloaded[0m mime_guess v2.0.5
+[1m[92m  Downloaded[0m quinn-udp v0.6.3
+[1m[92m  Downloaded[0m rand v0.10.3
+[1m[92m  Downloaded[0m rand_chacha v0.3.1
+[1m[92m  Downloaded[0m rand_core v0.6.4
+[1m[92m  Downloaded[0m uuid v1.28.0
+[1m[92m  Downloaded[0m zeroize v1.9.1
+[1m[92m  Downloaded[0m crossbeam-epoch v0.9.21
+[1m[92m  Downloaded[0m defmt-macros v1.2.0
+[1m[92m  Downloaded[0m either v1.19.0
+[1m[92m  Downloaded[0m getifaddrs v0.6.2
+[1m[92m  Downloaded[0m is_terminal_polyfill v1.70.2
+[1m[92m  Downloaded[0m memoffset v0.9.1
+[1m[92m  Downloaded[0m quinn v0.11.12
+[1m[92m  Downloaded[0m quinn-udp v0.5.16
+[1m[92m  Downloaded[0m quote v1.0.47
+[1m[92m  Downloaded[0m radix_trie v0.3.0
+[1m[92m  Downloaded[0m rand_pcg v0.10.2
+[1m[92m  Downloaded[0m csv-core v0.1.13
+[1m[92m  Downloaded[0m ctr v0.9.2
+[1m[92m  Downloaded[0m der-parser v10.0.0
+[1m[92m  Downloaded[0m flume v0.12.0
+[1m[92m  Downloaded[0m inout v0.1.4
+[1m[92m  Downloaded[0m instant-acme v0.8.5
+[1m[92m  Downloaded[0m parking_lot_core v0.9.12
+[1m[92m  Downloaded[0m poly1305 v0.8.0
+[1m[92m  Downloaded[0m rcgen v0.14.10
+[1m[92m  Downloaded[0m fixedbitset v0.5.7
+[1m[92m  Downloaded[0m anstream v1.0.0
+[1m[92m  Downloaded[0m curve25519-dalek-derive v0.1.1
+[1m[92m  Downloaded[0m digest v0.11.3
+[1m[92m  Downloaded[0m futures-macro v0.3.34
+[1m[92m  Downloaded[0m readme-rustdocifier v0.1.1
+[1m[92m  Downloaded[0m reed-solomon-simd v3.1.0
+[1m[92m  Downloaded[0m ghash v0.5.1
+[1m[92m  Downloaded[0m itoa v1.0.18
+[1m[92m  Downloaded[0m sharded-slab v0.1.7
+[1m[92m  Downloaded[0m synstructure v0.13.2
+[1m[92m  Downloaded[0m data-encoding v2.11.1
+[1m[92m  Downloaded[0m defmt v1.2.0
+[1m[92m  Downloaded[0m rand_core v0.10.1
+[1m[92m  Downloaded[0m itertools v0.15.0
+[1m[92m  Downloaded[0m md5 v0.8.1
+[1m[92m  Downloaded[0m num-conv v0.2.2
+[1m[92m  Downloaded[0m tokio-rustls v0.26.6
+[1m[92m  Downloaded[0m anstyle v1.0.14
+[1m[92m  Downloaded[0m block-buffer v0.10.4
+[1m[92m  Downloaded[0m chacha20 v0.9.1
+[1m[92m  Downloaded[0m digest v0.10.7
+[1m[92m  Downloaded[0m form_urlencoded v1.2.2
+[1m[92m  Downloaded[0m cfg-if v1.0.5
+[1m[92m  Downloaded[0m cfg_aliases v0.2.2
+[1m[92m  Downloaded[0m colorchoice v1.0.5
+[1m[92m  Downloaded[0m foldhash v0.2.0
+[1m[92m  Downloaded[0m anstyle-query v1.1.5
+[1m[92m  Downloaded[0m block-buffer v0.12.1
+[1m[92m  Downloaded[0m unicode-xid v0.2.6
+[1m[92m  Downloaded[0m cpufeatures v0.2.17
+[1m[92m  Downloaded[0m yasna v0.6.0
+[1m[92m  Downloaded[0m arrayvec v0.7.8
+[1m[92m  Downloaded[0m cpufeatures v0.3.1
+[1m[92m  Downloaded[0m curve25519-dalek v4.1.3
+[1m[92m  Downloaded[0m jiff-static v0.2.38
+[1m[92m  Downloaded[0m mime v0.3.17
+[1m[92m  Downloaded[0m symlink v0.1.0
+[1m[92m  Downloaded[0m tagptr v0.2.0
+[1m[92m  Downloaded[0m ahash v0.8.12
+[1m[92m  Downloaded[0m constant_time_eq v0.4.2
+[1m[92m  Downloaded[0m cmov v0.5.4
+[1m[92m  Downloaded[0m scopeguard v1.2.0
+[1m[92m  Downloaded[0m zmij v1.0.23
+[1m[92m  Downloaded[0m byte_string v1.0.0
+[1m[92m  Downloaded[0m cipher v0.4.4
+[1m[92m  Downloaded[0m const_format_proc_macros v0.2.34
+[1m[92m  Downloaded[0m unicode-ident v1.0.27
+[1m[92m  Downloaded[0m anstyle-parse v1.0.0
+[1m[92m  Downloaded[0m anyhow v1.0.104
+[1m[92m  Downloaded[0m bit-vec v0.9.1
+[1m[92m  Downloaded[0m blake2 v0.10.6
+[1m[92m  Downloaded[0m clap_derive v4.6.7
+[1m[92m  Downloaded[0m futures-executor v0.3.34
+[1m[92m  Downloaded[0m log v0.4.34
+[1m[92m  Downloaded[0m nibble_vec v0.1.0
+[1m[92m  Downloaded[0m pin-project-lite v0.2.17
+[1m[92m  Downloaded[0m powerfmt v0.2.1
+[1m[92m  Downloaded[0m kcp v0.5.3
+[1m[92m  Downloaded[0m num-traits v0.2.19
+[1m[92m  Downloaded[0m bitflags v2.13.2
+[1m[92m  Downloaded[0m x509-parser v0.18.1
+[1m[92m  Downloaded[0m shlex v2.0.1
+[1m[92m  Downloaded[0m sync_wrapper v1.0.2
+[1m[92m  Downloaded[0m sha2 v0.11.1
+[1m[92m  Downloaded[0m tower-service v0.3.3
+[1m[92m  Downloaded[0m zerocopy-derive v0.8.63
+[1m[92m  Downloaded[0m base64 v0.23.1
+[1m[92m  Downloaded[0m chacha20poly1305 v0.10.1
+[1m[92m  Downloaded[0m clap v4.6.7
+[1m[92m  Downloaded[0m const-oid v0.10.2
+[1m[92m  Downloaded[0m futures-core v0.3.34
+[1m[92m  Downloaded[0m futures-task v0.3.34
+[1m[92m  Downloaded[0m rand v0.8.8
+[1m[92m  Downloaded[0m toml v1.1.8+spec-1.1.0
+[1m[92m  Downloaded[0m unicase v2.10.0
+[1m[92m  Downloaded[0m serde_derive v1.0.229
+[1m[92m  Downloaded[0m subtle v2.6.1
+[1m[92m  Downloaded[0m arc-swap v1.9.3
+[1m[92m  Downloaded[0m borsh v1.8.1
+[1m[92m  Downloaded[0m httpdate v1.0.3
+[1m[92m  Downloaded[0m konst_macro_rules v0.2.19
+[1m[92m  Downloaded[0m matchers v0.2.0
+[1m[92m  Downloaded[0m asn1-rs v0.7.2
+[1m[92m  Downloaded[0m bytes v1.12.1
+[1m[92m  Downloaded[0m serde_spanned v1.1.2
+[1m[92m  Downloaded[0m sha1 v0.11.0
+[1m[92m  Downloaded[0m tokio-stream v0.1.19
+[1m[92m  Downloaded[0m const_format v0.2.36
+[1m[92m  Downloaded[0m serde_core v1.0.229
+[1m[92m  Downloaded[0m aes v0.8.4
+[1m[92m  Downloaded[0m aes-gcm v0.10.3
+[1m[92m  Downloaded[0m num-integer v0.1.47
+[1m[92m  Downloaded[0m smol_str v0.3.7
+[1m[92m  Downloaded[0m strsim v0.11.1
+[1m[92m  Downloaded[0m siphasher v1.0.4
+[1m[92m  Downloaded[0m tracing-serde v0.2.0
+[1m[92m  Downloaded[0m http-range-header v0.4.2
+[1m[92m  Downloaded[0m netlink-packet-core v0.8.2
+[1m[92m  Downloaded[0m cc v1.9.0
+[1m[92m  Downloaded[0m version_check v0.9.5
+[1m[92m  Downloaded[0m percent-encoding v2.3.2
+[1m[92m  Downloaded[0m ppv-lite86 v0.2.21
+[1m[92m  Downloaded[0m psl v2.1.245
+[1m[92m  Downloaded[0m sha2 v0.10.9
+[1m[92m  Downloaded[0m rustc-hash v2.1.3
+[1m[92m  Downloaded[0m fnv v1.0.7
+[1m[92m  Downloaded[0m tokio-macros v2.7.2
+[1m[92m  Downloaded[0m serde_html_form v0.4.1
+[1m[92m  Downloaded[0m rustc_version v0.4.1
+[1m[92m  Downloaded[0m netlink-sys v0.8.8
+[1m[92m  Downloaded[0m polyval v0.6.2
+[1m[92m  Downloaded[0m pem v4.0.0
+[1m[92m  Downloaded[0m signal-hook-registry v1.4.8
+[1m[92m  Downloaded[0m tokio_kcp v0.9.8
+[1m[92m  Downloaded[0m lock_api v0.4.14
+[1m[92m  Downloaded[0m universal-hash v0.5.1
+[1m[92m  Downloaded[0m untrusted v0.9.0
+[1m[92m  Downloaded[0m utf8parse v0.2.2
+[1m[92m  Downloaded[0m hybrid-array v0.4.15
+[1m[92m  Downloaded[0m netconfig-rs v0.1.6
+[1m[92m  Downloaded[0m nu-ansi-term v0.50.3
+[1m[92m  Downloaded[0m parking_lot v0.12.5
+[1m[92m  Downloaded[0m rustls-native-certs v0.8.5
+[1m[92m  Downloaded[0m slab v0.4.12
+[1m[92m  Downloaded[0m thiserror v1.0.69
+[1m[92m  Downloaded[0m thiserror v2.0.21
+[1m[92m  Downloaded[0m thiserror-impl v1.0.69
+[1m[92m  Downloaded[0m toml_datetime v1.1.2+spec-1.1.0
+[1m[92m  Downloaded[0m toml_parser v1.1.5+spec-1.1.0
+[1m[92m  Downloaded[0m toml_writer v1.1.3+spec-1.1.0
+[1m[92m  Downloaded[0m tracing-appender v0.2.5
+[1m[92m  Downloaded[0m tracing-attributes v0.1.31
+[1m[92m  Downloaded[0m try-lock v0.2.5
+[1m[92m  Downloaded[0m clap_builder v4.6.7
+[1m[92m  Downloaded[0m futures-channel v0.3.34
+[1m[92m  Downloaded[0m getrandom v0.2.17
+[1m[92m  Downloaded[0m getrandom v0.3.4
+[1m[92m  Downloaded[0m hmac v0.13.0
+[1m[92m  Downloaded[0m memchr v2.8.3
+[1m[92m  Downloaded[0m quinn-proto v0.11.19
+[1m[92m  Downloaded[0m rustversion v1.0.23
+[1m[92m  Downloaded[0m semver v1.0.28
+[1m[92m  Downloaded[0m smallvec v1.16.3
+[1m[92m  Downloaded[0m spin v0.9.9
+[1m[92m  Downloaded[0m thiserror-impl v2.0.21
+[1m[92m  Downloaded[0m tokio-graceful v0.2.2
+[1m[92m  Downloaded[0m tokio-tungstenite v0.30.0
+[1m[92m  Downloaded[0m tracing-log v0.2.0
+[1m[92m  Downloaded[0m futures v0.3.34
+[1m[92m  Downloaded[0m konst v0.2.20
+[1m[92m  Downloaded[0m minimal-lexical v0.2.1
+[1m[92m  Downloaded[0m num-bigint v0.4.8
+[1m[92m  Downloaded[0m rusticata-macros v4.1.0
+[1m[92m  Downloaded[0m rustls-platform-verifier v0.7.1
+[1m[92m  Downloaded[0m ryu v1.0.23
+[1m[92m  Downloaded[0m socket2 v0.6.5
+[1m[92m  Downloaded[0m time-macros v0.2.32
+[1m[92m  Downloaded[0m toml_edit v0.25.17+spec-1.1.0
+[1m[92m  Downloaded[0m serde v1.0.229
+[1m[92m  Downloaded[0m tinyvec v1.13.3
+[1m[92m  Downloaded[0m http v1.5.0
+[1m[92m  Downloaded[0m indexmap v2.14.2
+[1m[92m  Downloaded[0m mio v1.2.4
+[1m[92m  Downloaded[0m nom v7.1.3
+[1m[92m  Downloaded[0m tracing-subscriber v0.3.23
+[1m[92m  Downloaded[0m h2 v0.4.20
+[1m[92m  Downloaded[0m hyper v1.12.0
+[1m[92m  Downloaded[0m hyper-util v0.1.21
+[1m[92m  Downloaded[0m iri-string v0.7.14
+[1m[92m  Downloaded[0m jiff-core v0.1.1
+[1m[92m  Downloaded[0m serde_json v1.0.154
+[1m[92m  Downloaded[0m typenum v1.20.1
+[1m[92m  Downloaded[0m libm v0.2.16
+[1m[92m  Downloaded[0m netlink-packet-route v0.25.1
+[1m[92m  Downloaded[0m nom v8.0.0
+[1m[92m  Downloaded[0m regex v1.13.1
+[1m[92m  Downloaded[0m tokio-util v0.7.20
+[1m[92m  Downloaded[0m rustls-pki-types v1.15.1
+[1m[92m  Downloaded[0m zerocopy v0.8.63
+[1m[92m  Downloaded[0m portable-atomic v1.15.0
+[1m[92m  Downloaded[0m time v0.3.55
+[1m[92m  Downloaded[0m nix v0.30.1
+[1m[92m  Downloaded[0m nix v0.31.3
+[1m[92m  Downloaded[0m regex-syntax v0.8.11
+[1m[92m  Downloaded[0m rustls v0.23.46
+[1m[92m  Downloaded[0m syn v3.0.9
+[1m[92m  Downloaded[0m syn v2.0.119
+[1m[92m  Downloaded[0m libmimalloc-sys v0.1.49
+[1m[92m  Downloaded[0m tracing v0.1.44
+[1m[92m  Downloaded[0m csv v1.4.0
+[1m[92m  Downloaded[0m libc v0.2.191
+[1m[92m  Downloaded[0m regex-automata v0.4.18
+[1m[92m  Downloaded[0m snow v0.10.0
+[1m[92m  Downloaded[0m thread_local v1.1.10
+[1m[92m  Downloaded[0m tokio v1.54.1
+[1m[92m  Downloaded[0m ring v0.17.14
+[1m[92m  Downloaded[0m rustls-webpki v0.103.16
+[1m[92m  Downloaded[0m tracing-core v0.1.36
+[1m[92m  Downloaded[0m tun-rs v2.8.13
+[1m[92m   Compiling[0m proc-macro2 v1.0.107
+[1m[92m   Compiling[0m unicode-ident v1.0.27
+[1m[92m   Compiling[0m quote v1.0.47
+[1m[92m   Compiling[0m libc v0.2.191
+[1m[92m    Checking[0m cfg-if v1.0.5
+[1m[92m   Compiling[0m serde_core v1.0.229
+[1m[92m   Compiling[0m serde v1.0.229
+[1m[92m    Checking[0m log v0.4.34
+[1m[92m    Checking[0m pin-project-lite v0.2.17
+[1m[92m    Checking[0m memchr v2.8.3
+[1m[92m   Compiling[0m find-msvc-tools v0.1.15
+[1m[92m   Compiling[0m syn v3.0.9
+[1m[92m   Compiling[0m syn v2.0.119
+[1m[92m    Checking[0m typenum v1.20.1
+[1m[92m   Compiling[0m version_check v0.9.5
+[1m[92m   Compiling[0m shlex v2.0.1
+[1m[92m   Compiling[0m cc v1.9.0
+[1m[92m    Checking[0m once_cell v1.21.4
+[1m[92m    Checking[0m socket2 v0.6.5
+[1m[92m    Checking[0m tracing-core v0.1.36
+[1m[92m    Checking[0m errno v0.3.14
+[1m[92m   Compiling[0m thiserror v2.0.21
+[1m[92m    Checking[0m zeroize v1.9.1
+[1m[92m    Checking[0m signal-hook-registry v1.4.8
+[1m[92m    Checking[0m mio v1.2.4
+[1m[92m    Checking[0m itoa v1.0.18
+[1m[92m    Checking[0m futures-core v0.3.34
+[1m[92m   Compiling[0m autocfg v1.5.1
+[1m[92m    Checking[0m getrandom v0.2.17
+[1m[92m    Checking[0m futures-sink v0.3.34
+[1m[92m   Compiling[0m ring v0.17.14
+[1m[92m   Compiling[0m serde_derive v1.0.229
+[1m[92m   Compiling[0m thiserror-impl v2.0.21
+[1m[92m   Compiling[0m tokio-macros v2.7.2
+[1m[92m    Checking[0m slab v0.4.12
+[1m[92m    Checking[0m subtle v2.6.1
+[1m[92m   Compiling[0m generic-array v0.14.7
+[1m[92m   Compiling[0m tracing-attributes v0.1.31
+[1m[92m    Checking[0m untrusted v0.9.0
+[1m[92m   Compiling[0m time-core v0.1.9
+[1m[92m   Compiling[0m num-conv v0.2.2
+[1m[92m   Compiling[0m time-macros v0.2.32
+[1m[92m    Checking[0m tracing v0.1.44
+[1m[92m    Checking[0m futures-channel v0.3.34
+[1m[92m    Checking[0m rustls-pki-types v1.15.1
+[1m[92m    Checking[0m scopeguard v1.2.0
+[1m[92m   Compiling[0m cfg_aliases v0.2.2
+[1m[92m    Checking[0m rand_core v0.10.1
+[1m[92m    Checking[0m powerfmt v0.2.1
+[1m[92m    Checking[0m bytes v1.12.1
+[1m[92m    Checking[0m smallvec v1.16.3
+[1m[92m    Checking[0m deranged v0.5.9
+[1m[92m    Checking[0m lock_api v0.4.14
+[1m[92m   Compiling[0m futures-macro v0.3.34
+[1m[92m    Checking[0m tokio v1.54.1
+[1m[92m   Compiling[0m zerocopy v0.8.63
+[1m[92m    Checking[0m time v0.3.55
+[1m[92m    Checking[0m futures-task v0.3.34
+[1m[92m   Compiling[0m getrandom v0.4.3
+[1m[92m    Checking[0m futures-io v0.3.34
+[1m[92m   Compiling[0m zmij v1.0.23
+[1m[92m    Checking[0m futures-util v0.3.34
+[1m[92m    Checking[0m crypto-common v0.1.7
+[1m[92m   Compiling[0m num-traits v0.2.19
+[1m[92m    Checking[0m aho-corasick v1.1.5
+[1m[92m    Checking[0m cpufeatures v0.3.1
+[1m[92m   Compiling[0m parking_lot_core v0.9.12
+[1m[92m    Checking[0m equivalent v1.0.3
+[1m[92m    Checking[0m regex-syntax v0.8.11
+[1m[92m    Checking[0m atomic-waker v1.1.2
+[1m[92m    Checking[0m tokio-util v0.7.20
+[1m[92m   Compiling[0m winnow v1.0.4
+[1m[92m    Checking[0m regex-automata v0.4.18
+[1m[92m   Compiling[0m crossbeam-utils v0.8.23
+[1m[92m   Compiling[0m hashbrown v0.17.1
+[1m[92m   Compiling[0m serde_json v1.0.154
+[1m[92m   Compiling[0m getrandom v0.3.4
+[1m[92m    Checking[0m lazy_static v1.5.1
+[1m[92m   Compiling[0m indexmap v2.14.2
+[1m[92m   Compiling[0m toml_parser v1.1.5+spec-1.1.0
+[1m[92m    Checking[0m hybrid-array v0.4.15
+[1m[92m    Checking[0m base64 v0.23.1
+[1m[92m    Checking[0m bitflags v2.13.2
+[1m[92m   Compiling[0m toml_datetime v1.1.2+spec-1.1.0
+[1m[92m    Checking[0m minimal-lexical v0.2.1
+[1m[92m   Compiling[0m toml_edit v0.25.17+spec-1.1.0
+[1m[92m    Checking[0m nom v7.1.3
+[1m[92m    Checking[0m parking_lot v0.12.5
+[1m[92m   Compiling[0m synstructure v0.13.2
+[1m[92m   Compiling[0m rustversion v1.0.23
+[1m[92m    Checking[0m cmov v0.5.4
+[1m[92m    Checking[0m konst_macro_rules v0.2.19
+[1m[92m   Compiling[0m unicode-xid v0.2.6
+[1m[92m    Checking[0m ctutils v0.4.5
+[1m[92m   Compiling[0m const_format_proc_macros v0.2.34
+[1m[92m    Checking[0m konst v0.2.20
+[1m[92m   Compiling[0m asn1-rs-derive v0.6.0
+[1m[92m    Checking[0m rusticata-macros v4.1.0
+[1m[92m   Compiling[0m proc-macro-crate v3.5.0
+[1m[92m    Checking[0m block-buffer v0.12.1
+[1m[92m    Checking[0m crypto-common v0.2.2
+[1m[92m   Compiling[0m asn1-rs-impl v0.2.0
+[1m[92m   Compiling[0m displaydoc v0.2.7
+[1m[92m   Compiling[0m ahash v0.8.12
+[1m[92m   Compiling[0m portable-atomic v1.15.0
+[1m[92m    Checking[0m cpufeatures v0.2.17
+[1m[92m    Checking[0m const-oid v0.10.2
+[1m[92m    Checking[0m asn1-rs v0.7.2
+[1m[92m    Checking[0m digest v0.11.3
+[1m[92m   Compiling[0m rama-macros v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m const_format v0.2.36
+[1m[92m    Checking[0m crossbeam-channel v0.5.17
+[1m[92m    Checking[0m num-integer v0.1.47
+[1m[92m    Checking[0m matchers v0.2.0
+[1m[92m    Checking[0m regex v1.13.1
+[1m[92m    Checking[0m sharded-slab v0.1.7
+[1m[92m    Checking[0m chacha20 v0.10.2
+[1m[92m    Checking[0m tracing-serde v0.2.0
+[1m[92m    Checking[0m wildcard v0.3.0
+[1m[92m    Checking[0m tracing-log v0.2.0
+[1m[92m    Checking[0m smol_str v0.3.7
+[1m[92m    Checking[0m thread_local v1.1.10
+[1m[92m   Compiling[0m crossbeam-epoch v0.9.21
+[1m[92m   Compiling[0m oid-registry v0.8.1
+[1m[92m   Compiling[0m rustls v0.23.46
+[1m[92m    Checking[0m data-encoding v2.11.1
+[1m[92m    Checking[0m nu-ansi-term v0.50.3
+[1m[92m    Checking[0m tracing-subscriber v0.3.23
+[1m[92m    Checking[0m rama-utils v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m rand v0.10.3
+[1m[92m    Checking[0m num-bigint v0.4.8
+[1m[92m    Checking[0m rustls-webpki v0.103.16
+[1m[92m    Checking[0m futures-executor v0.3.34
+[1m[92m    Checking[0m ipnet v2.12.2
+[1m[92m    Checking[0m ryu v1.0.23
+[1m[92m    Checking[0m symlink v0.1.0
+[1m[92m    Checking[0m openssl-probe v0.2.1
+[1m[92m    Checking[0m percent-encoding v2.3.2
+[1m[92m    Checking[0m tracing-appender v0.2.5
+[1m[92m    Checking[0m form_urlencoded v1.2.2
+[1m[92m    Checking[0m der-parser v10.0.0
+[1m[92m    Checking[0m futures v0.3.34
+[1m[92m    Checking[0m uuid v1.28.0
+[1m[92m    Checking[0m tokio-stream v0.1.19
+[1m[92m    Checking[0m tokio-graceful v0.2.2
+[1m[92m    Checking[0m http v1.5.0
+[1m[92m    Checking[0m nibble_vec v0.1.0
+[1m[92m    Checking[0m asynk-strim v0.1.5
+[1m[92m   Compiling[0m rama-net v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m csv-core v0.1.13
+[1m[92m    Checking[0m tagptr v0.2.0
+[1m[92m    Checking[0m either v1.19.0
+[1m[92m    Checking[0m endian-type v0.2.0
+[1m[92m    Checking[0m psl-types v2.0.11
+[1m[92m    Checking[0m rama-error v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m itertools v0.15.0
+[1m[92m    Checking[0m psl v2.1.245
+[1m[92m    Checking[0m rama-core v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m radix_trie v0.3.0
+[1m[92m    Checking[0m moka v0.12.16
+[1m[92m    Checking[0m csv v1.4.0
+[1m[92m    Checking[0m x509-parser v0.18.1
+[1m[92m    Checking[0m serde_html_form v0.4.1
+[1m[92m    Checking[0m arc-swap v1.9.3
+[1m[92m    Checking[0m pem v4.0.0
+[1m[92m    Checking[0m yasna v0.6.0
+[1m[92m    Checking[0m inout v0.1.4
+[1m[92m    Checking[0m mime v0.3.17
+[1m[92m   Compiling[0m semver v1.0.28
+[1m[92m   Compiling[0m httparse v1.10.1
+[1m[92m    Checking[0m cipher v0.4.4
+[1m[92m   Compiling[0m rustc_version v0.4.1
+[1m[92m    Checking[0m rcgen v0.14.10
+[1m[92m    Checking[0m universal-hash v0.5.1
+[1m[92m    Checking[0m spin v0.9.9
+[1m[92m    Checking[0m opaque-debug v0.3.1
+[1m[92m    Checking[0m hmac v0.13.0
+[1m[92m    Checking[0m sha2 v0.11.1
+[1m[92m    Checking[0m webpki-root-certs v1.0.10
+[1m[92m   Compiling[0m memoffset v0.9.1
+[1m[92m    Checking[0m jiff-core v0.1.1
+[1m[92m   Compiling[0m paste v1.0.15
+[1m[92m    Checking[0m fastrand v2.5.0
+[1m[92m    Checking[0m flume v0.12.0
+[1m[92m    Checking[0m tokio-rustls v0.26.6
+[1m[92m    Checking[0m http-body v1.1.0
+[1m[92m    Checking[0m block-buffer v0.10.4
+[1m[92m    Checking[0m nom v8.0.0
+[1m[92m    Checking[0m fnv v1.0.7
+[1m[92m    Checking[0m md5 v0.8.1
+[1m[92m    Checking[0m jiff v0.2.38
+[1m[92m   Compiling[0m readme-rustdocifier v0.1.1
+[1m[92m   Compiling[0m libm v0.2.16
+[1m[92m    Checking[0m try-lock v0.2.5
+[1m[92m    Checking[0m want v0.3.2
+[1m[92m    Checking[0m h2 v0.4.20
+[1m[92m    Checking[0m digest v0.10.7
+[1m[92m    Checking[0m polyval v0.6.2
+[1m[92m   Compiling[0m curve25519-dalek v4.1.3
+[1m[92m    Checking[0m aead v0.5.2
+[1m[92m    Checking[0m rand_pcg v0.10.2
+[1m[92m   Compiling[0m nix v0.30.1
+[1m[92m    Checking[0m lru-slab v0.1.3
+[1m[92m    Checking[0m rustc-hash v2.1.3
+[1m[92m    Checking[0m utf8parse v0.2.2
+[1m[92m   Compiling[0m thiserror v1.0.69
+[1m[92m    Checking[0m anstyle-parse v1.0.0
+[1m[92m    Checking[0m netlink-packet-core v0.8.2
+[1m[92m    Checking[0m ghash v0.5.1
+[1m[92m    Checking[0m poly1305 v0.8.0
+[1m[92m   Compiling[0m snow v0.10.0
+[1m[92m    Checking[0m aes v0.8.4
+[1m[92m    Checking[0m chacha20 v0.9.1
+[1m[92m    Checking[0m ctr v0.9.2
+[1m[92m    Checking[0m rustls-native-certs v0.8.5
+[1m[92m    Checking[0m ppv-lite86 v0.2.21
+[1m[92m   Compiling[0m nix v0.31.3
+[1m[92m    Checking[0m hyper v1.12.0
+[1m[92m   Compiling[0m quinn-udp v0.5.16
+[1m[92m   Compiling[0m quinn-udp v0.6.3
+[1m[92m    Checking[0m webpki-roots v1.0.10
+[1m[92m   Compiling[0m curve25519-dalek-derive v0.1.1
+[1m[92m   Compiling[0m thiserror-impl v1.0.69
+[1m[92m    Checking[0m rand_core v0.6.4
+[1m[92m   Compiling[0m blake3 v1.8.7
+[1m[92m   Compiling[0m libmimalloc-sys v0.1.49
+[1m[92m    Checking[0m is_terminal_polyfill v1.70.2
+[1m[92m   Compiling[0m anyhow v1.0.104
+[1m[92m    Checking[0m tower-service v0.3.3
+[1m[92m    Checking[0m anstyle v1.0.14
+[1m[92m    Checking[0m siphasher v1.0.4
+[1m[92m    Checking[0m anstyle-query v1.1.5
+[1m[92m    Checking[0m colorchoice v1.0.5
+[1m[92m    Checking[0m foldhash v0.2.0
+[1m[92m    Checking[0m anstream v1.0.0
+[1m[92m    Checking[0m fastbloom v0.17.0
+[1m[92m    Checking[0m hyper-util v0.1.21
+[1m[92m    Checking[0m rand_chacha v0.3.1
+[1m[92m    Checking[0m rustls-platform-verifier v0.7.1
+[1m[92m    Checking[0m aes-gcm v0.10.3
+[1m[92m    Checking[0m chacha20poly1305 v0.10.1
+[1m[92m   Compiling[0m reed-solomon-simd v3.1.0
+[1m[92m    Checking[0m netlink-packet-route v0.25.1
+[1m[92m    Checking[0m rama-crypto v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m rama-udp v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m rama-tls v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m sha2 v0.10.9
+[1m[92m    Checking[0m blake2 v0.10.6
+[1m[92m   Compiling[0m rama v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m sha1 v0.11.0
+[1m[92m    Checking[0m netlink-sys v0.8.8
+[1m[92m   Compiling[0m quinn v0.11.12
+[1m[92m   Compiling[0m async-trait v0.1.92
+[1m[92m    Checking[0m strsim v0.11.1
+[1m[92m   Compiling[0m heck v0.5.0
+[1m[92m    Checking[0m constant_time_eq v0.4.2
+[1m[92m    Checking[0m rama-quic-proto v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m rama-tls-rustls v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m arrayvec v0.7.8
+[1m[92m    Checking[0m tinyvec v1.13.3
+[1m[92m   Compiling[0m tun-rs v2.8.13
+[1m[92m    Checking[0m clap_lex v1.1.1
+[1m[92m    Checking[0m quinn-proto v0.11.19
+[1m[92m    Checking[0m clap_builder v4.6.7
+[1m[92m    Checking[0m netconfig-rs v0.1.6
+[1m[92m    Checking[0m rama-quic v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m clap_derive v4.6.7
+[1m[92m    Checking[0m tungstenite v0.30.0
+[1m[92m    Checking[0m hyper-rustls v0.27.10
+[1m[92m    Checking[0m rand v0.8.8
+[1m[92m    Checking[0m kcp v0.5.3
+[1m[92m    Checking[0m http-body-util v0.1.5
+[1m[92m    Checking[0m rama-json v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m    Checking[0m getifaddrs v0.6.2
+[1m[92m    Checking[0m serde_spanned v1.1.2
+[1m[92m    Checking[0m byte_string v1.0.0
+[1m[92m    Checking[0m base64 v0.22.1
+[1m[92m    Checking[0m toml_writer v1.1.3+spec-1.1.0
+[1m[92m    Checking[0m httpdate v1.0.3
+[1m[92m    Checking[0m fixedbitset v0.5.7
+[1m[92m    Checking[0m toml v1.1.8+spec-1.1.0
+[1m[92m    Checking[0m instant-acme v0.8.5
+[1m[92m    Checking[0m tokio_kcp v0.9.8
+[1m[92m    Checking[0m shabdiz v0.1.0 (/home/runner/work/rakhsh/rakhsh/shabdiz)
+[1m[92m    Checking[0m mimalloc v0.1.52
+[1m[92m    Checking[0m clap v4.6.7
+[1m[92m    Checking[0m tokio-tungstenite v0.30.0
+[1m[92m    Checking[0m rakhsh v0.1.0 (/home/runner/work/rakhsh/rakhsh/rakhsh)
+[1m[91merror[E0423][0m[1m: cannot find function `unbounded` in module `mpsc`[0m
+    [1m[94m--> [0msrc/dgram.rs:1314:34
+     [1m[94m|[0m
+[1m[94m1314[0m [1m[94m|[0m         let (tx, mut rx) = mpsc::unbounded::<SinkMsg>();
+     [1m[94m|[0m                                  [1m[91m^^^^^^^^^[0m [1m[91mnot found in `mpsc`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: a module named `mpsc::unbounded` exists in another namespace
+
+[1m[91merror[E0603][0m[1m: module `unbounded` is private[0m
+    [1m[94m--> [0msrc/dgram.rs:1314:34
+     [1m[94m|[0m
+[1m[94m1314[0m [1m[94m|[0m         let (tx, mut rx) = mpsc::unbounded::<SinkMsg>();
+     [1m[94m|[0m                                  [1m[91m^^^^^^^^^[0m [1m[91mprivate module[0m
+     [1m[94m|[0m
+[1m[92mnote[0m: the module `unbounded` is defined here
+    [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/sync/mpsc/mod.rs:128:1
+     [1m[94m|[0m
+[1m[94m 128[0m [1m[94m|[0m mod unbounded;
+     [1m[94m|[0m [1m[92m^^^^^^^^^^^^^[0m
+
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0msrc/dgram.rs:481:9
+    [1m[94m|[0m
+[1m[94m480[0m [1m[94m|[0m     let res = match cfg.role {
+    [1m[94m|[0m                     [1m[94m--------[0m [1m[94mthis expression has type `std::string::String`[0m
+[1m[94m481[0m [1m[94m|[0m         "entry" => entry_bridge(handle.clone(), fwd.0, tfwds).await,
+    [1m[94m|[0m         [1m[91m^^^^^^^[0m [1m[91mexpected `String`, found `&str`[0m
+    [1m[94m|[0m
+[1m[96mhelp[0m: consider converting the `String` to a `&str` using `.as_str()`
+    [1m[94m|[0m
+[1m[94m480[0m [1m[94m| [0m    let res = match cfg.role[92m.as_str()[0m {
+    [1m[94m|[0m                             [92m+++++++++[0m
+
+[1m[91merror[E0382][0m[1m: borrow of partially moved value: `sink`[0m
+    [1m[94m--> [0msrc/dgram.rs:1477:13
+     [1m[94m|[0m
+[1m[94m1469[0m [1m[94m|[0m             if let Some(sink) = sink {
+     [1m[94m|[0m                         [1m[94m----[0m [1m[94mvalue partially moved here[0m
+[1m[94m...[0m
+[1m[94m1477[0m [1m[94m|[0m             sink.is_some()
+     [1m[94m|[0m             [1m[91m^^^^[0m [1m[91mvalue borrowed here after partial move[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: partial move occurs because value has type `tokio::sync::mpsc::UnboundedSender<SinkMsg>`, which does not implement the `Copy` trait
+[1m[96mhelp[0m: borrow this binding in the pattern to avoid moving the value
+     [1m[94m|[0m
+[1m[94m1469[0m [1m[94m| [0m            if let Some([92mref [0msink) = sink {
+     [1m[94m|[0m                         [92m+++[0m
+
+[1m[33mwarning[0m[1m: unused variable: `best_id`[0m
+   [1m[94m--> [0msrc/resume.rs:429:26
+    [1m[94m|[0m
+[1m[94m429[0m [1m[94m|[0m                     let (best_id, best_score, best_lane) = &scores[0];
+    [1m[94m|[0m                          [1m[33m^^^^^^^[0m [1m[33mhelp: if this is intentional, prefix it with an underscore: `_best_id`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+[1mSome errors have detailed explanations: E0308, E0382, E0423, E0603.[0m
+[1mFor more information about an error, try `rustc --explain E0308`.[0m
+[1m[33mwarning[0m: `rakhsh` (lib) generated 1 warning
+[1m[91merror[0m: could not compile `rakhsh` (lib) due to 4 previous errors; 1 warning emitted
+== test ==
+[1m[92m   Compiling[0m digest v0.10.7
+[1m[92m   Compiling[0m memoffset v0.9.1
+[1m[92m   Compiling[0m polyval v0.6.2
+[1m[92m   Compiling[0m tinystr v0.8.5
+[1m[92m   Compiling[0m aead v0.5.2
+[1m[92m   Compiling[0m rand_pcg v0.10.2
+[1m[92m   Compiling[0m colorchoice v1.0.5
+[1m[92m   Compiling[0m litemap v0.8.3
+[1m[92m   Compiling[0m anstyle v1.0.14
+[1m[92m   Compiling[0m anstyle-query v1.1.5
+[1m[92m   Compiling[0m lru-slab v0.1.3
+[1m[92m   Compiling[0m rustc-hash v2.1.3
+[1m[92m   Compiling[0m writeable v0.6.4
+[1m[92m   Compiling[0m is_terminal_polyfill v1.70.2
+[1m[92m   Compiling[0m anstream v1.0.0
+[1m[92m   Compiling[0m icu_locale_core v2.4.0
+[1m[92m   Compiling[0m ghash v0.5.1
+[1m[92m   Compiling[0m netlink-packet-core v0.8.2
+[1m[92m   Compiling[0m libm v0.2.16
+[1m[92m   Compiling[0m rama-crypto v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m poly1305 v0.8.0
+[1m[92m   Compiling[0m rama-tls v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m potential_utf v0.1.6
+[1m[92m   Compiling[0m chacha20 v0.9.1
+[1m[92m   Compiling[0m aes v0.8.4
+[1m[92m   Compiling[0m ctr v0.9.2
+[1m[92m   Compiling[0m zerotrie v0.2.5
+[1m[92m   Compiling[0m ppv-lite86 v0.2.21
+[1m[92m   Compiling[0m rand_core v0.6.4
+[1m[92m   Compiling[0m libmimalloc-sys v0.1.49
+[1m[92m   Compiling[0m blake3 v1.8.7
+[1m[92m   Compiling[0m utf8_iter v1.0.4
+[1m[92m   Compiling[0m icu_properties_data v2.4.0
+[1m[92m   Compiling[0m clap_lex v1.1.1
+[1m[92m   Compiling[0m siphasher v1.0.4
+[1m[92m   Compiling[0m winnow v1.0.4
+[1m[92m   Compiling[0m foldhash v0.2.0
+[1m[92m   Compiling[0m icu_normalizer_data v2.4.0
+[1m[92m   Compiling[0m fastbloom v0.17.0
+[1m[92m   Compiling[0m toml_parser v1.1.5+spec-1.1.0
+[1m[92m   Compiling[0m clap_builder v4.6.7
+[1m[92m   Compiling[0m icu_collections v2.4.0
+[1m[92m   Compiling[0m thiserror v1.0.69
+[1m[92m   Compiling[0m curve25519-dalek v4.1.3
+[1m[92m   Compiling[0m rustls-webpki v0.103.16
+[1m[92m   Compiling[0m rand_chacha v0.3.1
+[1m[92m   Compiling[0m rama-quic-proto v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m icu_provider v2.4.0
+[1m[92m   Compiling[0m snow v0.10.0
+[1m[92m   Compiling[0m aes-gcm v0.10.3
+[1m[92m   Compiling[0m chacha20poly1305 v0.10.1
+[1m[92m   Compiling[0m rama-udp v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m netlink-packet-route v0.25.1
+[1m[92m   Compiling[0m nix v0.30.1
+[1m[92m   Compiling[0m anyhow v1.0.104
+[1m[92m   Compiling[0m blake2 v0.10.6
+[1m[92m   Compiling[0m sha2 v0.10.9
+[1m[92m   Compiling[0m clap_derive v4.6.7
+[1m[92m   Compiling[0m sha1 v0.11.0
+[1m[92m   Compiling[0m netlink-sys v0.8.8
+[1m[92m   Compiling[0m tokio-rustls v0.26.6
+[1m[92m   Compiling[0m rustls-platform-verifier v0.7.1
+[1m[92m   Compiling[0m hyper-rustls v0.27.10
+[1m[92m   Compiling[0m rama-tls-rustls v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m async-trait v0.1.92
+[1m[92m   Compiling[0m toml_datetime v1.1.2+spec-1.1.0
+[1m[92m   Compiling[0m serde_spanned v1.1.2
+[1m[92m   Compiling[0m object v0.39.1
+[1m[92m   Compiling[0m constant_time_eq v0.4.2
+[1m[92m   Compiling[0m arrayvec v0.7.8
+[1m[92m   Compiling[0m toml_writer v1.1.3+spec-1.1.0
+[1m[92m   Compiling[0m tinyvec v1.13.3
+[1m[92m   Compiling[0m toml v1.1.8+spec-1.1.0
+[1m[92m   Compiling[0m quinn-proto v0.11.19
+[1m[92m   Compiling[0m rama-quic v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m netconfig-rs v0.1.6
+[1m[92m   Compiling[0m clap v4.6.7
+[1m[92m   Compiling[0m tungstenite v0.30.0
+[1m[92m   Compiling[0m quinn-udp v0.6.3
+[1m[92m   Compiling[0m quinn-udp v0.5.16
+[1m[92m   Compiling[0m nix v0.31.3
+[1m[92m   Compiling[0m rand v0.8.8
+[1m[92m   Compiling[0m kcp v0.5.3
+[1m[92m   Compiling[0m rama-json v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m getifaddrs v0.6.2
+[1m[92m   Compiling[0m fixedbitset v0.5.7
+[1m[92m   Compiling[0m byte_string v1.0.0
+[1m[92m   Compiling[0m tokio_kcp v0.9.8
+[1m[92m   Compiling[0m reed-solomon-simd v3.1.0
+[1m[92m   Compiling[0m tun-rs v2.8.13
+[1m[92m   Compiling[0m icu_normalizer v2.4.0
+[1m[92m   Compiling[0m icu_properties v2.4.0
+[1m[92m   Compiling[0m quinn v0.11.12
+[1m[92m   Compiling[0m shabdiz v0.1.0 (/home/runner/work/rakhsh/rakhsh/shabdiz)
+[1m[92m   Compiling[0m mimalloc v0.1.52
+[1m[92m   Compiling[0m tokio-tungstenite v0.30.0
+[1m[92m   Compiling[0m rama v0.5.0 (https://github.com/plabayo/rama?rev=ec92b76#ec92b763)
+[1m[92m   Compiling[0m instant-acme v0.8.5
+[1m[92m   Compiling[0m sync_wrapper v1.0.2
+[1m[92m   Compiling[0m tower-layer v0.3.3
+[1m[92m   Compiling[0m ident_case v1.0.1
+[1m[92m   Compiling[0m darling_core v0.24.1
+[1m[92m   Compiling[0m ar_archive_writer v0.5.3
+[1m[92m   Compiling[0m idna_adapter v1.2.2
+[1m[92m   Compiling[0m unicase v2.10.0
+[1m[92m   Compiling[0m mime_guess v2.0.5
+[1m[92m   Compiling[0m idna v1.1.0
+[1m[92m   Compiling[0m darling_macro v0.24.1
+[1m[92m   Compiling[0m psm v0.1.32
+[1m[92m   Compiling[0m rakhsh v0.1.0 (/home/runner/work/rakhsh/rakhsh/rakhsh)
+[1m[92m   Compiling[0m tower v0.5.3
+[1m[92m   Compiling[0m erasable v1.3.0
+[1m[92m   Compiling[0m darling v0.24.1
+[1m[91merror[E0423][0m[1m: cannot find function `unbounded` in module `mpsc`[0m
+    [1m[94m--> [0msrc/dgram.rs:1314:34
+     [1m[94m|[0m
+[1m[94m1314[0m [1m[94m|[0m         let (tx, mut rx) = mpsc::unbounded::<SinkMsg>();
+     [1m[94m|[0m                                  [1m[91m^^^^^^^^^[0m [1m[91mnot found in `mpsc`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: a module named `mpsc::unbounded` exists in another namespace
+
+[1m[91merror[E0603][0m[1m: module `unbounded` is private[0m
+    [1m[94m--> [0msrc/dgram.rs:1314:34
+     [1m[94m|[0m
+[1m[94m1314[0m [1m[94m|[0m         let (tx, mut rx) = mpsc::unbounded::<SinkMsg>();
+     [1m[94m|[0m                                  [1m[91m^^^^^^^^^[0m [1m[91mprivate module[0m
+     [1m[94m|[0m
+[1m[92mnote[0m: the module `unbounded` is defined here
+    [1m[94m--> [0m/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.54.1/src/sync/mpsc/mod.rs:128:1
+     [1m[94m|[0m
+[1m[94m 128[0m [1m[94m|[0m mod unbounded;
+     [1m[94m|[0m [1m[92m^^^^^^^^^^^^^[0m
+
+[1m[92m   Compiling[0m url v2.5.8
+[1m[92m   Compiling[0m serde_urlencoded v0.7.1
+[1m[92m   Compiling[0m stacker v0.1.25
+[1m[92m   Compiling[0m tower-http v0.6.11
+[1m[91merror[E0308][0m[1m: mismatched types[0m
+   [1m[94m--> [0msrc/dgram.rs:481:9
+    [1m[94m|[0m
+[1m[94m480[0m [1m[94m|[0m     let res = match cfg.role {
+    [1m[94m|[0m                     [1m[94m--------[0m [1m[94mthis expression has type `std::string::String`[0m
+[1m[94m481[0m [1m[94m|[0m         "entry" => entry_bridge(handle.clone(), fwd.0, tfwds).await,
+    [1m[94m|[0m         [1m[91m^^^^^^^[0m [1m[91mexpected `String`, found `&str`[0m
+    [1m[94m|[0m
+[1m[96mhelp[0m: consider converting the `String` to a `&str` using `.as_str()`
+    [1m[94m|[0m
+[1m[94m480[0m [1m[94m| [0m    let res = match cfg.role[92m.as_str()[0m {
+    [1m[94m|[0m                             [92m+++++++++[0m
+
+[1m[92m   Compiling[0m serde_with_macros v3.24.0
+[1m[92m   Compiling[0m derive_more-impl v1.0.0
+[1m[92m   Compiling[0m fs-err v3.3.2
+[1m[92m   Compiling[0m pin-project-internal v1.1.13
+[1m[92m   Compiling[0m proc-macro-error-attr2 v2.0.0
+[1m[92m   Compiling[0m include_dir_macros v0.7.4
+[1m[92m   Compiling[0m bytemuck v1.25.2
+[1m[92m   Compiling[0m include_dir v0.7.4
+[1m[92m   Compiling[0m rgb v0.8.53
+[1m[92m   Compiling[0m derive_more v1.0.0
+[1m[92m   Compiling[0m proc-macro-error2 v2.0.1
+[1m[92m   Compiling[0m itertools v0.10.5
+[1m[92m   Compiling[0m pin-project v1.1.13
+[1m[92m   Compiling[0m serde_with v3.24.0
+[1m[92m   Compiling[0m rc-box v1.3.0
+[1m[92m   Compiling[0m reqwest v0.12.28
+[1m[91merror[E0382][0m[1m: borrow of partially moved value: `sink`[0m
+    [1m[94m--> [0msrc/dgram.rs:1477:13
+     [1m[94m|[0m
+[1m[94m1469[0m [1m[94m|[0m             if let Some(sink) = sink {
+     [1m[94m|[0m                         [1m[94m----[0m [1m[94mvalue partially moved here[0m
+[1m[94m...[0m
+[1m[94m1477[0m [1m[94m|[0m             sink.is_some()
+     [1m[94m|[0m             [1m[91m^^^^[0m [1m[91mvalue borrowed here after partial move[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: partial move occurs because value has type `tokio::sync::mpsc::UnboundedSender<SinkMsg>`, which does not implement the `Copy` trait
+[1m[96mhelp[0m: borrow this binding in the pattern to avoid moving the value
+     [1m[94m|[0m
+[1m[94m1469[0m [1m[94m| [0m            if let Some([92mref [0msink) = sink {
+     [1m[94m|[0m                         [92m+++[0m
+
+[1m[92m   Compiling[0m chrono v0.4.45
+[1m[92m   Compiling[0m take_mut v0.2.2
+[1m[92m   Compiling[0m takecell v0.1.2
+[1m[92m   Compiling[0m colored v3.1.1
+[1m[92m   Compiling[0m teloxide-core v0.13.0
+[1m[33mwarning[0m[1m: unused variable: `best_id`[0m
+   [1m[94m--> [0msrc/resume.rs:429:26
+    [1m[94m|[0m
+[1m[94m429[0m [1m[94m|[0m                     let (best_id, best_score, best_lane) = &scores[0];
+    [1m[94m|[0m                          [1m[33m^^^^^^^[0m [1m[33mhelp: if this is intentional, prefix it with an underscore: `_best_id`[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+[1m[92m   Compiling[0m dptree v0.5.1
+[1mSome errors have detailed explanations: E0308, E0382, E0423, E0603.[0m
+[1mFor more information about an error, try `rustc --explain E0308`.[0m
+[1m[33mwarning[0m: `rakhsh` (lib) generated 1 warning
+[1m[91merror[0m: could not compile `rakhsh` (lib) due to 4 previous errors; 1 warning emitted
+[1m[33mwarning[0m: build failed, waiting for other jobs to finish...
