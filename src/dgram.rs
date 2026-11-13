@@ -1550,7 +1550,7 @@ impl TcpMux {
                         let rtt = now.duration_since(c.sent);
                         s.srtt = Some(match s.srtt {
                             None => rtt,
-                            Some(prev) => prev / 8 + rtt / 8 * 7,
+                            Some(prev) => prev / 8 * 7 + rtt / 8,
                         });
                         let base = s.srtt.unwrap();
                         s.rto = (base * 4).clamp(TCP_MIN_RTO, TCP_MAX_RTO);
