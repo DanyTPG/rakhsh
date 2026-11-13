@@ -24,7 +24,7 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
         with:
@@ -65,25 +65,21 @@ jobs:
         working-directory: rakhsh
         run: cargo check -p rakhsh --no-default-features
 
-      - name: Dump the toolchain log for remote debugging
+      - name: Toolchain failure summary
         if: failure()
         working-directory: rakhsh
         run: |
           {
-            echo "== fmt =="
-            cargo fmt --check -p rakhsh -p rakhsh-control 2>&1 || true
-            echo "== check =="
+            echo "### Rust CI Failure Details"
+            echo "#### Cargo Check"
+            echo '```'
             cargo check -p rakhsh 2>&1 || true
-            echo "== test =="
-            cargo test --workspace 2>&1 | tail -n 200 || true
-          } > /tmp/ci-errors.log
-          git config user.name ci
-          git config user.email ci@localhost
-          git add -f /tmp/ci-errors.log 2>/dev/null || true
-          cp /tmp/ci-errors.log ci-errors.log
-          git add ci-errors.log
-          git commit -m "ci: error log [skip ci]" || true
-          git push || true
+            echo '```'
+            echo "#### Clippy"
+            echo '```'
+            cargo clippy --workspace --all-targets -- -D warnings 2>&1 || true
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
 
   # The raw-packet carriers (faketcp, l2tcp, icmp, spoof, and the shabdiz raw
   # carriers) are Linux-only; the stream carriers, the router and the control

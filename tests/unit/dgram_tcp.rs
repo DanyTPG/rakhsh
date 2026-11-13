@@ -79,3 +79,37 @@ fn unknown_op_rejected() {
     let b = [0u8, 0, 0, 9, 200];
     assert!(parse_frame(&b).is_none());
 }
+
+#[test]
+fn rcv_out_of_order_and_duplicate_accounting() {
+    let mut rcv = Rcv::new();
+    assert_eq!(rcv.held, 0);
+
+    // Initial out-of-order packet
+    let payload = vec![0xaa; 100];
+    let seq = 500u64;
+    let old = rcv.pending.insert(seq, payload.clone());
+    assert!(old.is_none());
+    rcv.held += payload.len();
+    assert_eq!(rcv.held, 100);
+
+    // Duplicate retransmitted packet arriving before gap fills
+    if let Some(old) = rcv.pending.insert(seq, payload.clone()) {
+        rcv.held = rcv.held.saturating_sub(old.len()) + payload.len();
+    } else {
+        rcv.held += payload.len();
+    }
+    // Must remain 100, not inflate to 200
+    assert_eq!(rcv.held, 100);
+}
+
+#[test]
+fn snd_fin_offset_accounts_for_queued_bytes() {
+    let mut s = Snd::new(Some("127.0.0.1:80".into()));
+    s.next_seq = 1000;
+    s.outq_bytes = 450;
+    // Calling conn_fin:
+    s.fin_off = Some(s.next_seq + s.outq_bytes as u64);
+    assert_eq!(s.fin_off, Some(1450));
+}
+

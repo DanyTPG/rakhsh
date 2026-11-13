@@ -843,7 +843,7 @@ async fn entry_bridge(
                     frame_open(sid, &target, &mut out);
                     mux.h.send(TCPFLOW, &out);
                 }
-                mux.bridge_conn(sid, conn).await;
+                mux.bridge_conn(sid, conn, Some(target.clone())).await;
             }
         }));
     }
@@ -1216,6 +1216,8 @@ struct InFlight {
 }
 
 struct Snd {
+    target: Option<String>,
+    last_open_sent: Instant,
     outq: VecDeque<Vec<u8>>,
     outq_bytes: usize,
     inflight: BTreeMap<u64, InFlight>,
@@ -1231,8 +1233,10 @@ struct Snd {
 }
 
 impl Snd {
-    fn new() -> Snd {
+    fn new(target: Option<String>) -> Snd {
         Snd {
+            target,
+            last_open_sent: Instant::now(),
             outq: VecDeque::new(),
             outq_bytes: 0,
             inflight: BTreeMap::new(),
@@ -1257,6 +1261,7 @@ struct Rcv {
     acked_upto: u64,
     dirty: bool,
     fin_ticks: u8,
+    to_sink: VecDeque<SinkMsg>,
 }
 
 impl Rcv {
@@ -1269,6 +1274,7 @@ impl Rcv {
             acked_upto: 0,
             dirty: false,
             fin_ticks: 0,
+            to_sink: VecDeque::new(),
         }
     }
 }
@@ -1302,17 +1308,26 @@ impl TcpMux {
 
     // ---- local-connection bridging (both roles) --------------------------
 
-    async fn bridge_conn(self: &Arc<Self>, sid: u32, conn: tokio::net::TcpStream) {
+    async fn bridge_conn(self: &Arc<Self>, sid: u32, conn: tokio::net::TcpStream, target: Option<String>) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let _ = conn.set_nodelay(true);
         let (mut r, mut w) = conn.into_split();
         let (tx, mut rx) = mpsc::unbounded_channel::<SinkMsg>();
+
+        // Flush any frames buffered in to_sink before TcpStream::connect finished
+        {
+            let mut rcvs = self.rcv.lock().expect("rcv");
+            let rcv = rcvs.entry(sid).or_insert_with(Rcv::new);
+            while let Some(msg) = rcv.to_sink.pop_front() {
+                let _ = tx.send(msg);
+            }
+        }
+
         self.sinks.lock().expect("sinks").insert(sid, tx);
-        self.snd.lock().expect("snd").insert(sid, Snd::new());
-        self.rcv.lock().expect("rcv").insert(sid, Rcv::new());
+        self.snd.lock().expect("snd").entry(sid).or_insert_with(|| Snd::new(target));
         self.notify.notify_one();
 
-        let writer = tokio::spawn(async move {
+        tokio::spawn(async move {
             while let Some(m) = rx.recv().await {
                 match m {
                     SinkMsg::Data(d) => {
@@ -1329,7 +1344,7 @@ impl TcpMux {
         });
 
         let mux = self.clone();
-        let reader = tokio::spawn(async move {
+        tokio::spawn(async move {
             let mut buf = vec![0u8; 16 * 1024];
             loop {
                 match r.read(&mut buf).await {
@@ -1343,10 +1358,6 @@ impl TcpMux {
                 }
             }
             mux.conn_fin(sid);
-        });
-        tokio::spawn(async move {
-            let _ = reader.await;
-            writer.abort();
         });
     }
 
@@ -1375,7 +1386,7 @@ impl TcpMux {
     fn conn_fin(&self, sid: u32) {
         if let Some(s) = self.snd.lock().expect("snd").get_mut(&sid) {
             if s.fin_off.is_none() {
-                s.fin_off = Some(s.next_seq);
+                s.fin_off = Some(s.next_seq + s.outq_bytes as u64);
             }
         }
         self.notify.notify_one();
@@ -1386,9 +1397,18 @@ impl TcpMux {
     fn on_frame(self: &Arc<Self>, b: &[u8]) {
         match parse_frame(b) {
             Some(Op::Open(sid, target)) => {
-                if self.snd.lock().expect("snd").contains_key(&sid) {
+                // Immediately send an ACK so entry knows OP_OPEN was delivered
+                let mut ack = Vec::with_capacity(13);
+                frame_ack(sid, 0, &mut ack);
+                self.h.send(TCPFLOW, &ack);
+
+                let mut rcvs = self.rcv.lock().expect("rcv");
+                if rcvs.contains_key(&sid) || self.snd.lock().expect("snd").contains_key(&sid) {
                     return;
                 }
+                rcvs.insert(sid, Rcv::new());
+                drop(rcvs);
+
                 let mux = self.clone();
                 let target = target.to_string();
                 tokio::spawn(async move {
@@ -1404,11 +1424,12 @@ impl TcpMux {
                             let mut out = Vec::new();
                             frame_rst(sid, &mut out);
                             mux.h.send(TCPFLOW, &out);
+                            mux.kill(sid, "connect failed");
                             return;
                         }
                     };
                     info!("tcp stream {sid}: delivering to {target}");
-                    mux.bridge_conn(sid, conn).await;
+                    mux.bridge_conn(sid, conn, None).await;
                 });
             }
             Some(Op::Data(sid, seq, payload)) => self.on_data(sid, seq, payload),
@@ -1420,22 +1441,29 @@ impl TcpMux {
     }
 
     fn on_data(&self, sid: u32, seq: u64, payload: &[u8]) {
-        let sink = {
+        {
             let mut rcvs = self.rcv.lock().expect("rcv");
             let rcv = match rcvs.get_mut(&sid) {
                 Some(r) => r,
                 None => return,
             };
-            let end = seq + payload.len() as u64;
+            let Some(end) = seq.checked_add(payload.len() as u64) else {
+                return;
+            };
             if end <= rcv.want {
+                rcv.dirty = true;
                 return;
             }
             if seq > rcv.want {
                 if rcv.held + payload.len() > TCP_WINDOW {
                     return; // window full, sender retransmits
                 }
-                rcv.pending.insert(seq, payload.to_vec());
-                rcv.held += payload.len();
+                if let Some(old) = rcv.pending.insert(seq, payload.to_vec()) {
+                    rcv.held = rcv.held.saturating_sub(old.len()) + payload.len();
+                } else {
+                    rcv.held += payload.len();
+                }
+                rcv.dirty = true;
                 return;
             }
             // in-order delivery, then drain anything pending covers
@@ -1454,24 +1482,28 @@ impl TcpMux {
                 deliver.push(d);
             }
             rcv.dirty = true;
-            if let Some(fin) = rcv.fin_off {
-                if rcv.want >= fin {
-                    deliver.push(Vec::new()); // marker for Fin
-                }
-            }
+            let fin_due = rcv.fin_off.is_some_and(|f| rcv.want >= f);
+
             let sink = self.sinks.lock().expect("sinks").get(&sid).cloned();
-            let delivered = sink.is_some();
-            if let Some(ref sink) = sink {
-                for d in &deliver {
-                    let _ = sink.send(SinkMsg::Data(d.clone()));
+            match sink {
+                Some(s) => {
+                    for d in deliver {
+                        let _ = s.send(SinkMsg::Data(d));
+                    }
+                    if fin_due {
+                        let _ = s.send(SinkMsg::Fin);
+                    }
                 }
-                if rcv.fin_off.is_some() && rcv.want >= rcv.fin_off.unwrap() {
-                    let _ = sink.send(SinkMsg::Fin);
+                None => {
+                    for d in deliver {
+                        rcv.to_sink.push_back(SinkMsg::Data(d));
+                    }
+                    if fin_due {
+                        rcv.to_sink.push_back(SinkMsg::Fin);
+                    }
                 }
             }
-            delivered
-        };
-        let _ = sink;
+        }
         self.notify.notify_one();
     }
 
@@ -1480,6 +1512,7 @@ impl TcpMux {
         let Some(s) = snds.get_mut(&sid) else {
             return;
         };
+        s.target = None;
         if ack_to > s.peer_acked {
             let now = Instant::now();
             let newly: Vec<u64> = s
@@ -1561,11 +1594,18 @@ impl TcpMux {
                     let dead = {
                         let mut snds = self.snd.lock().expect("snd");
                         let s = snds.get_mut(&sid).expect("snd entry");
+                        // retransmit OP_OPEN if not yet acknowledged
+                        if let Some(ref target) = s.target {
+                            let now = Instant::now();
+                            if now.duration_since(s.last_open_sent) > s.rto {
+                                s.last_open_sent = now;
+                                let mut f = Vec::with_capacity(target.len() + 7);
+                                frame_open(sid, target, &mut f);
+                                frames.push(f);
+                            }
+                        }
                         // flush queued bytes into the window
-                        while !s.outq.is_empty()
-                            && s.inflight_bytes < TCP_WINDOW
-                            && s.fin_off.is_none()
-                        {
+                        while !s.outq.is_empty() && s.inflight_bytes < TCP_WINDOW {
                             let mut chunk = s.outq.pop_front().unwrap();
                             s.outq_bytes -= chunk.len();
                             while !chunk.is_empty() {

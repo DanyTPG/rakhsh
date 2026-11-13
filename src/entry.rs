@@ -30,6 +30,7 @@ pub(crate) struct Pool {
     limit: usize,
     pub(crate) limits: Arc<Limiter>,
     hub: Option<Arc<resume::Hub>>,
+    adaptive: bool,
 }
 
 impl Pool {
@@ -38,12 +39,14 @@ impl Pool {
         if v.is_empty() {
             return None;
         }
-        if v.len() == 1 {
-            return Some(v[0].clone());
-        }
         let n = v.len();
-        let idx1 = self.rr.fetch_add(1, SeqCst) % n;
-        let idx2 = self.rr.fetch_add(1, SeqCst) % n;
+        if n == 1 || !self.adaptive {
+            let idx = self.rr.fetch_add(1, SeqCst) % n;
+            return Some(v[idx].clone());
+        }
+        let r = self.rr.fetch_add(1, SeqCst);
+        let idx1 = r % n;
+        let idx2 = (idx1 + 1 + ((r / n) % (n - 1))) % n;
         let s1 = &v[idx1];
         let s2 = &v[idx2];
         let score1 = crate::status::get()
@@ -90,6 +93,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         limit: cfg.max_connections.unwrap_or(0),
         limits: Limiter::new(&cfg, true)?,
         hub: resume::from_cfg(&cfg, true),
+        adaptive: cfg.link_policy.as_deref() == Some("adaptive"),
     };
     metrics.bind_active(pool.active.clone());
     metrics.bind_limiter(&pool.limits);

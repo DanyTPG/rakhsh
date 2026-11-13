@@ -283,18 +283,19 @@ struct HubState {
 }
 
 impl HubState {
-    fn pick(&mut self) -> Option<LaneRef> {
+    fn pick(&mut self, adaptive: bool) -> Option<LaneRef> {
         if self.lanes.is_empty() {
             return None;
         }
-        if self.lanes.len() == 1 {
-            return Some(self.lanes[0].clone());
+        let n = self.lanes.len();
+        if n == 1 || !adaptive {
+            let idx = self.rr % n;
+            self.rr = self.rr.wrapping_add(1);
+            return Some(self.lanes[idx].clone());
         }
 
-        let n = self.lanes.len();
         let idx1 = self.rr % n;
-        self.rr = self.rr.wrapping_add(1);
-        let idx2 = self.rr % n;
+        let idx2 = (idx1 + 1 + ((self.rr / n) % (n - 1))) % n;
         self.rr = self.rr.wrapping_add(1);
 
         let lane1 = &self.lanes[idx1];
@@ -324,7 +325,8 @@ pub fn from_cfg(cfg: &crate::config::Config, entry: bool) -> Option<Arc<Hub>> {
         "stream resumption on: TCP streams survive the loss of a lane (up to {}s without any lane)",
         grace.as_secs()
     );
-    Some(Hub::new(entry, grace))
+    let adaptive = cfg.link_policy.as_deref() == Some("adaptive");
+    Some(Hub::new(entry, grace, adaptive))
 }
 
 pub struct Hub {
@@ -333,6 +335,7 @@ pub struct Hub {
     entry: bool,
     grace: Duration,
     resent: AtomicU64,
+    adaptive: bool,
 }
 
 fn random_u64() -> u64 {
@@ -347,7 +350,7 @@ fn random_u64() -> u64 {
 }
 
 impl Hub {
-    pub fn new(entry: bool, grace: Duration) -> Arc<Hub> {
+    pub fn new(entry: bool, grace: Duration, adaptive: bool) -> Arc<Hub> {
         let hub = Arc::new(Hub {
             st: Mutex::new(HubState {
                 streams: HashMap::new(),
@@ -359,6 +362,7 @@ impl Hub {
             entry,
             grace,
             resent: AtomicU64::new(0),
+            adaptive,
         });
         let w = Arc::downgrade(&hub);
         tokio::spawn(async move {
@@ -395,7 +399,7 @@ impl Hub {
                 .filter(|s| s.needs_attention())
                 .cloned()
                 .collect();
-            (todo, st.pick())
+            (todo, st.pick(self.adaptive))
         };
         for s in todo {
             if s.finished_for().is_some_and(|t| t > self.grace) {
@@ -416,29 +420,41 @@ impl Hub {
         // When multiple lanes are established, monitor quality scores.
         // If a lane suffers severe throttling (< 15% of the best lane's score,
         // with the best lane score > 2.0), migrate active streams off the throttled lane.
+        // Gated on active degradation (loss > 5% or active throughput > 2 Mbps) to prevent
+        // false-positive migrations between idle lanes with different baseline RTTs.
         let migration_plan: Option<(u64, LaneRef)> = {
-            let st = self.st.lock().unwrap();
-            if st.lanes.len() >= 2 {
-                if let Some(m) = crate::status::get() {
-                    let mut scores: Vec<(u64, f64, LaneRef)> = st
-                        .lanes
-                        .iter()
-                        .map(|l| (l.id, m.lane_score(l.id), l.clone()))
-                        .collect();
-                    scores
-                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                    let (_, best_score, best_lane) = &scores[0];
-                    let (worst_id, worst_score, _) = &scores[scores.len() - 1];
-                    if *best_score > 2.0 && *worst_score < (*best_score * 0.15) {
-                        Some((*worst_id, best_lane.clone()))
+            if !self.adaptive {
+                None
+            } else {
+                let st = self.st.lock().unwrap();
+                if st.lanes.len() >= 2 {
+                    if let Some(m) = crate::status::get() {
+                        let mut scores: Vec<(u64, f64, LaneRef)> = st
+                            .lanes
+                            .iter()
+                            .map(|l| (l.id, m.lane_score(l.id), l.clone()))
+                            .collect();
+                        scores
+                            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                        let (_, best_score, best_lane) = &scores[0];
+                        let (worst_id, worst_score, _) = &scores[scores.len() - 1];
+                        if *best_score > 2.0 && *worst_score < (*best_score * 0.15) {
+                            let worst_loss = m.lane_loss(*worst_id);
+                            let best_rate = m.lane_rate_mbps(best_lane.id);
+                            if worst_loss > 5.0 || best_rate > 2.0 {
+                                Some((*worst_id, best_lane.clone()))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
                 } else {
                     None
                 }
-            } else {
-                None
             }
         };
 
@@ -480,7 +496,7 @@ impl Hub {
                 .collect();
             detached
                 .into_iter()
-                .filter_map(|s| st.pick().map(|l| (s, l)))
+                .filter_map(|s| st.pick(self.adaptive).map(|l| (s, l)))
                 .collect()
         };
         if !waiting.is_empty() {
@@ -501,7 +517,7 @@ impl Hub {
                 .filter(|s| s.detach_if(lane))
                 .cloned()
                 .collect();
-            (lost, st.pick())
+            (lost, st.pick(self.adaptive))
         };
         if lost.is_empty() {
             return;
@@ -571,7 +587,7 @@ impl Hub {
         target: &str,
         client: Option<&str>,
     ) -> Option<Arc<RStream>> {
-        let lane = self.st.lock().unwrap().pick()?;
+        let lane = self.st.lock().unwrap().pick(self.adaptive)?;
         let id = self.next_id.fetch_add(1, SeqCst);
         let frame = open_frame(id, client, target);
         let s = self.new_stream(id, Some(lane), Some(frame.clone()), false);

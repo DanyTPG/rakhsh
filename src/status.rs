@@ -41,7 +41,7 @@ pub fn socket_path(cfg: &Config) -> String {
     cfg.control_socket.clone().unwrap_or_else(default_socket)
 }
 
-#[derive(Default)]
+#[derive(Clone)]
 struct LaneInfo {
     label: String,
     up_since: Option<Instant>,
@@ -56,6 +56,26 @@ struct LaneInfo {
     rate_bps: f64,
     last_rate_bytes: u64,
     score: f64,
+}
+
+impl Default for LaneInfo {
+    fn default() -> Self {
+        LaneInfo {
+            label: String::new(),
+            up_since: None,
+            rtt_ms: None,
+            jitter_ms: 0.0,
+            pings: 0,
+            pongs: 0,
+            waiting: false,
+            last_ping: None,
+            bytes_tx: 0,
+            bytes_rx: 0,
+            rate_bps: 0.0,
+            last_rate_bytes: 0,
+            score: 1.0,
+        }
+    }
 }
 
 impl LaneInfo {
@@ -266,6 +286,24 @@ impl Metrics {
             .get(&id)
             .map(|l| l.score)
             .unwrap_or(1.0)
+    }
+
+    pub fn lane_loss(&self, id: u64) -> f64 {
+        self.lanes
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|l| l.loss_pct())
+            .unwrap_or(0.0)
+    }
+
+    pub fn lane_rate_mbps(&self, id: u64) -> f64 {
+        self.lanes
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|l| l.rate_bps / 1_000_000.0)
+            .unwrap_or(0.0)
     }
 
     pub fn ping_sent(&self, id: u64) {

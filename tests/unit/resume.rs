@@ -189,8 +189,8 @@ struct Wire {
 impl Wire {
     fn new(grace: Duration, pace: Duration) -> Wire {
         Wire {
-            entry: Hub::new(true, grace),
-            exit: Hub::new(false, grace),
+            entry: Hub::new(true, grace, false),
+            exit: Hub::new(false, grace, false),
             next: 0,
             pumps: HashMap::new(),
             pace,
