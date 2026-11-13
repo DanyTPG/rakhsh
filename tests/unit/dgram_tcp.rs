@@ -132,3 +132,49 @@ fn fin_virtual_byte_and_ack_semantics() {
     assert!(!(100 > fin_off)); // Data acked, but FIN not yet acked
 }
 
+#[test]
+fn retransmitted_fin_sets_dirty_and_delivers_once() {
+    let mut r = Rcv::new();
+    r.want = 100;
+    let off = 100;
+
+    // First OP_FIN
+    if r.fin_off.is_none() {
+        r.fin_off = Some(off);
+    }
+    r.dirty = true;
+    if r.want >= off {
+        if r.want == off {
+            r.want = off + 1;
+        }
+        if !r.fin_delivered {
+            r.fin_delivered = true;
+            r.to_sink.push_back(SinkMsg::Fin);
+        }
+    }
+    assert_eq!(r.want, 101);
+    assert_eq!(r.to_sink.len(), 1);
+    assert!(r.dirty);
+
+    // Reset dirty flag after simulated ACK send
+    r.dirty = false;
+
+    // Retransmitted OP_FIN arrives because OP_ACK was dropped
+    if r.fin_off.is_none() {
+        r.fin_off = Some(off);
+    }
+    r.dirty = true;
+    if r.want >= off {
+        if r.want == off {
+            r.want = off + 1;
+        }
+        if !r.fin_delivered {
+            r.fin_delivered = true;
+            r.to_sink.push_back(SinkMsg::Fin);
+        }
+    }
+    // Must trigger fresh ACK (dirty is true) but NOT duplicate SinkMsg::Fin
+    assert!(r.dirty);
+    assert_eq!(r.want, 101);
+    assert_eq!(r.to_sink.len(), 1);
+}

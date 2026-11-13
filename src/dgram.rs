@@ -1260,9 +1260,10 @@ struct Rcv {
     pending: BTreeMap<u64, Vec<u8>>,
     held: usize,
     fin_off: Option<u64>,
+    fin_delivered: bool,
     acked_upto: u64,
     dirty: bool,
-    fin_ticks: u8,
+    fin_ticks: u16,
     to_sink: VecDeque<SinkMsg>,
 }
 
@@ -1273,6 +1274,7 @@ impl Rcv {
             pending: BTreeMap::new(),
             held: 0,
             fin_off: None,
+            fin_delivered: false,
             acked_upto: 0,
             dirty: false,
             fin_ticks: 0,
@@ -1497,7 +1499,10 @@ impl TcpMux {
                         rcv.want = fin + 1;
                         rcv.dirty = true;
                     }
-                    fin_due = true;
+                    if !rcv.fin_delivered {
+                        rcv.fin_delivered = true;
+                        fin_due = true;
+                    }
                 }
             }
 
@@ -1570,20 +1575,23 @@ impl TcpMux {
         };
         if r.fin_off.is_none() {
             r.fin_off = Some(off);
-            r.dirty = true;
         }
+        r.dirty = true;
+        r.fin_ticks = 0;
         if r.want >= off {
             if r.want == off {
                 r.want = off + 1;
-                r.dirty = true;
             }
-            let sink = self.sinks.lock().expect("sinks").get(&sid).cloned();
-            match sink {
-                Some(s) => {
-                    let _ = s.send(SinkMsg::Fin);
-                }
-                None => {
-                    r.to_sink.push_back(SinkMsg::Fin);
+            if !r.fin_delivered {
+                r.fin_delivered = true;
+                let sink = self.sinks.lock().expect("sinks").get(&sid).cloned();
+                match sink {
+                    Some(s) => {
+                        let _ = s.send(SinkMsg::Fin);
+                    }
+                    None => {
+                        r.to_sink.push_back(SinkMsg::Fin);
+                    }
                 }
             }
         }
@@ -1710,7 +1718,7 @@ impl TcpMux {
                     if let Some(fin) = r.fin_off {
                         if r.want > fin {
                             r.fin_ticks += 1;
-                            if r.fin_ticks > 20 {
+                            if r.fin_ticks > 320 {
                                 reap.push(*sid);
                                 continue;
                             }
@@ -1744,7 +1752,6 @@ impl TcpMux {
                     .collect();
                 for sid in done {
                     self.snd.lock().expect("snd").remove(&sid);
-                    self.sinks.lock().expect("sinks").remove(&sid);
                 }
             }
         }
