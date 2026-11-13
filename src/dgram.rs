@@ -843,7 +843,7 @@ async fn entry_bridge(
                     frame_open(sid, &target, &mut out);
                     mux.h.send(TCPFLOW, &out);
                 }
-                mux.bridge_conn(sid, conn, target.clone()).await;
+                mux.bridge_conn(sid, conn).await;
             }
         }));
     }
@@ -1216,7 +1216,6 @@ struct InFlight {
 }
 
 struct Snd {
-    target: String,
     outq: VecDeque<Vec<u8>>,
     outq_bytes: usize,
     inflight: BTreeMap<u64, InFlight>,
@@ -1232,9 +1231,8 @@ struct Snd {
 }
 
 impl Snd {
-    fn new(target: String) -> Snd {
+    fn new() -> Snd {
         Snd {
-            target,
             outq: VecDeque::new(),
             outq_bytes: 0,
             inflight: BTreeMap::new(),
@@ -1304,14 +1302,13 @@ impl TcpMux {
 
     // ---- local-connection bridging (both roles) --------------------------
 
-    async fn bridge_conn(self: &Arc<Self>, sid: u32, conn: tokio::net::TcpStream, target: String) {
+    async fn bridge_conn(self: &Arc<Self>, sid: u32, conn: tokio::net::TcpStream) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let _ = conn.set_nodelay(true);
         let (mut r, mut w) = conn.into_split();
         let (tx, mut rx) = mpsc::unbounded_channel::<SinkMsg>();
         self.sinks.lock().expect("sinks").insert(sid, tx);
-        let snd = Snd::new(target);
-        self.snd.lock().expect("snd").insert(sid, snd);
+        self.snd.lock().expect("snd").insert(sid, Snd::new());
         self.rcv.lock().expect("rcv").insert(sid, Rcv::new());
         self.notify.notify_one();
 
@@ -1411,7 +1408,7 @@ impl TcpMux {
                         }
                     };
                     info!("tcp stream {sid}: delivering to {target}");
-                    mux.bridge_conn(sid, conn, target).await;
+                    mux.bridge_conn(sid, conn).await;
                 });
             }
             Some(Op::Data(sid, seq, payload)) => self.on_data(sid, seq, payload),
