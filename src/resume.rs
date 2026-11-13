@@ -425,8 +425,9 @@ impl Hub {
                         .iter()
                         .map(|l| (l.id, m.lane_score(l.id), l.clone()))
                         .collect();
-                    scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                    let (best_id, best_score, best_lane) = &scores[0];
+                    scores
+                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    let (_, best_score, best_lane) = &scores[0];
                     let (worst_id, worst_score, _) = &scores[scores.len() - 1];
                     if *best_score > 2.0 && *worst_score < (*best_score * 0.15) {
                         Some((*worst_id, best_lane.clone()))

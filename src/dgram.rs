@@ -477,7 +477,7 @@ async fn serve_once(
         let carrier = carrier.clone();
         tokio::spawn(async move { report(handle, carrier).await })
     };
-    let res = match cfg.role {
+    let res = match cfg.role.as_str() {
         "entry" => entry_bridge(handle.clone(), fwd.0, tfwds).await,
         _ => exit_bridge(handle.clone(), fwd.1).await,
     };
@@ -829,7 +829,9 @@ async fn entry_bridge(
         let target = target.to_string();
         tcp_tasks.push(tokio::spawn(async move {
             loop {
-                let Ok((conn, _)) = l.accept().await else { break };
+                let Ok((conn, _)) = l.accept().await else {
+                    break;
+                };
                 if mux.snd.lock().expect("snd").len() >= TCP_MAX_CONNS {
                     continue;
                 }
@@ -1302,16 +1304,11 @@ impl TcpMux {
 
     // ---- local-connection bridging (both roles) --------------------------
 
-    async fn bridge_conn(
-        self: &Arc<Self>,
-        sid: u32,
-        conn: tokio::net::TcpStream,
-        target: String,
-    ) {
+    async fn bridge_conn(self: &Arc<Self>, sid: u32, conn: tokio::net::TcpStream, target: String) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let _ = conn.set_nodelay(true);
         let (mut r, mut w) = conn.into_split();
-        let (tx, mut rx) = mpsc::unbounded::<SinkMsg>();
+        let (tx, mut rx) = mpsc::unbounded_channel::<SinkMsg>();
         self.sinks.lock().expect("sinks").insert(sid, tx);
         let snd = Snd::new(target);
         self.snd.lock().expect("snd").insert(sid, snd);
@@ -1466,7 +1463,8 @@ impl TcpMux {
                 }
             }
             let sink = self.sinks.lock().expect("sinks").get(&sid).cloned();
-            if let Some(sink) = sink {
+            let delivered = sink.is_some();
+            if let Some(ref sink) = sink {
                 for d in &deliver {
                     let _ = sink.send(SinkMsg::Data(d.clone()));
                 }
@@ -1474,7 +1472,7 @@ impl TcpMux {
                     let _ = sink.send(SinkMsg::Fin);
                 }
             }
-            sink.is_some()
+            delivered
         };
         let _ = sink;
         self.notify.notify_one();
