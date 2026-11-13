@@ -112,4 +112,3 @@ fn snd_fin_offset_accounts_for_queued_bytes() {
     s.fin_off = Some(s.next_seq + s.outq_bytes as u64);
     assert_eq!(s.fin_off, Some(1450));
 }
-

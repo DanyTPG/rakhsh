@@ -1308,7 +1308,12 @@ impl TcpMux {
 
     // ---- local-connection bridging (both roles) --------------------------
 
-    async fn bridge_conn(self: &Arc<Self>, sid: u32, conn: tokio::net::TcpStream, target: Option<String>) {
+    async fn bridge_conn(
+        self: &Arc<Self>,
+        sid: u32,
+        conn: tokio::net::TcpStream,
+        target: Option<String>,
+    ) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let _ = conn.set_nodelay(true);
         let (mut r, mut w) = conn.into_split();

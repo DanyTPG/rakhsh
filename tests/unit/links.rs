@@ -168,4 +168,3 @@ fn adaptive_score_formula_edge_cases() {
     let s_50mbps = score(50_000_000.0, 80.0, 0.0);
     assert!((s_50mbps / s_10mbps - 5.0).abs() < 1e-6);
 }
-
