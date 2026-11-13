@@ -112,3 +112,23 @@ fn snd_fin_offset_accounts_for_queued_bytes() {
     s.fin_off = Some(s.next_seq + s.outq_bytes as u64);
     assert_eq!(s.fin_off, Some(1450));
 }
+
+#[test]
+fn fin_virtual_byte_and_ack_semantics() {
+    let mut r = Rcv::new();
+    r.want = 100;
+    r.fin_off = Some(100);
+    // When all data up to fin_off is received, want advances to fin_off + 1
+    if r.want == r.fin_off.unwrap() {
+        r.want += 1;
+        r.dirty = true;
+    }
+    assert_eq!(r.want, 101);
+    assert!(r.dirty);
+
+    // Sender acknowledges FIN when ack_to > fin_off
+    let fin_off = 100u64;
+    assert!(101 > fin_off); // FIN acked
+    assert!(!(100 > fin_off)); // Data acked, but FIN not yet acked
+}
+

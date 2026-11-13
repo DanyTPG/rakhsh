@@ -1227,6 +1227,7 @@ struct Snd {
     srtt: Option<Duration>,
     rto: Duration,
     fin_off: Option<u64>,
+    last_fin_sent: Option<Instant>,
     fin_retries: u8,
     peer_fin_acked: bool,
     dead: bool,
@@ -1246,6 +1247,7 @@ impl Snd {
             srtt: None,
             rto: TCP_MIN_RTO,
             fin_off: None,
+            last_fin_sent: None,
             fin_retries: 0,
             peer_fin_acked: false,
             dead: false,
@@ -1342,6 +1344,7 @@ impl TcpMux {
                     }
                     SinkMsg::Fin => {
                         let _ = w.shutdown().await;
+                        break;
                     }
                     SinkMsg::Rst => break,
                 }
@@ -1487,7 +1490,16 @@ impl TcpMux {
                 deliver.push(d);
             }
             rcv.dirty = true;
-            let fin_due = rcv.fin_off.is_some_and(|f| rcv.want >= f);
+            let mut fin_due = false;
+            if let Some(fin) = rcv.fin_off {
+                if rcv.want >= fin {
+                    if rcv.want == fin {
+                        rcv.want = fin + 1;
+                        rcv.dirty = true;
+                    }
+                    fin_due = true;
+                }
+            }
 
             let sink = self.sinks.lock().expect("sinks").get(&sid).cloned();
             match sink {
@@ -1543,7 +1555,7 @@ impl TcpMux {
             }
             s.peer_acked = ack_to;
             if let Some(fin) = s.fin_off {
-                if ack_to >= fin {
+                if ack_to > fin {
                     s.peer_fin_acked = true;
                 }
             }
@@ -1552,25 +1564,31 @@ impl TcpMux {
     }
 
     fn on_fin(&self, sid: u32, off: u64) {
-        let sink = {
-            let mut rcvs = self.rcv.lock().expect("rcv");
-            let Some(r) = rcvs.get_mut(&sid) else {
-                return;
-            };
-            if r.fin_off.is_none() {
-                r.fin_off = Some(off);
-            }
-            let done = r.fin_off.is_some() && r.want >= r.fin_off.unwrap();
-            self.sinks
-                .lock()
-                .expect("sinks")
-                .get(&sid)
-                .cloned()
-                .filter(|_| done)
+        let mut rcvs = self.rcv.lock().expect("rcv");
+        let Some(r) = rcvs.get_mut(&sid) else {
+            return;
         };
-        if let Some(sink) = sink {
-            let _ = sink.send(SinkMsg::Fin);
+        if r.fin_off.is_none() {
+            r.fin_off = Some(off);
+            r.dirty = true;
         }
+        if r.want >= off {
+            if r.want == off {
+                r.want = off + 1;
+                r.dirty = true;
+            }
+            let sink = self.sinks.lock().expect("sinks").get(&sid).cloned();
+            match sink {
+                Some(s) => {
+                    let _ = s.send(SinkMsg::Fin);
+                }
+                None => {
+                    r.to_sink.push_back(SinkMsg::Fin);
+                }
+            }
+        }
+        drop(rcvs);
+        self.notify.notify_one();
     }
 
     // lock order everywhere: snd -> rcv -> sinks (prevents lock-order deadlock
@@ -1656,13 +1674,21 @@ impl TcpMux {
                         // fin
                         if let Some(fin) = s.fin_off {
                             if !s.peer_fin_acked && s.inflight.is_empty() && s.outq.is_empty() {
-                                if s.fin_retries <= TCP_MAX_RETRIES {
-                                    s.fin_retries += 1;
-                                    let mut f = Vec::with_capacity(13);
-                                    frame_fin(sid, fin, &mut f);
-                                    frames.push(f);
-                                } else {
-                                    s.peer_fin_acked = true; // peer is gone; stop trying
+                                let now = Instant::now();
+                                let due = match s.last_fin_sent {
+                                    None => true,
+                                    Some(t) => now.duration_since(t) > s.rto,
+                                };
+                                if due {
+                                    s.last_fin_sent = Some(now);
+                                    if s.fin_retries <= TCP_MAX_RETRIES {
+                                        s.fin_retries += 1;
+                                        let mut f = Vec::with_capacity(13);
+                                        frame_fin(sid, fin, &mut f);
+                                        frames.push(f);
+                                    } else {
+                                        s.peer_fin_acked = true; // peer is gone; stop trying
+                                    }
                                 }
                             }
                         }
@@ -1682,7 +1708,7 @@ impl TcpMux {
                 let mut reap: Vec<u32> = Vec::new();
                 for (sid, r) in rcvs.iter_mut() {
                     if let Some(fin) = r.fin_off {
-                        if r.want >= fin {
+                        if r.want > fin {
                             r.fin_ticks += 1;
                             if r.fin_ticks > 20 {
                                 reap.push(*sid);
@@ -1690,7 +1716,7 @@ impl TcpMux {
                             }
                         }
                     }
-                    if r.want > r.acked_upto || !r.pending.is_empty() || r.fin_off.is_some() {
+                    if r.dirty || r.want > r.acked_upto {
                         r.acked_upto = r.want;
                         r.dirty = false;
                         let mut f = Vec::with_capacity(13);
@@ -1700,6 +1726,7 @@ impl TcpMux {
                 }
                 for sid in reap {
                     rcvs.remove(&sid);
+                    self.sinks.lock().expect("sinks").remove(&sid);
                 }
             }
             for f in frames {
@@ -1717,6 +1744,7 @@ impl TcpMux {
                     .collect();
                 for sid in done {
                     self.snd.lock().expect("snd").remove(&sid);
+                    self.sinks.lock().expect("sinks").remove(&sid);
                 }
             }
         }
