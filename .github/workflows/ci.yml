@@ -71,6 +71,10 @@ jobs:
         run: |
           {
             echo "### Rust CI Failure Details"
+            echo "#### Cargo Fmt"
+            echo '```diff'
+            cargo fmt --check -p rakhsh -p rakhsh-control 2>&1 || true
+            echo '```'
             echo "#### Cargo Check"
             echo '```'
             cargo check -p rakhsh 2>&1 || true
