@@ -430,12 +430,19 @@ async fn adaptive_moves_streams_off_a_degraded_lane_intact() {
     let before = wire.entry.lane_of(ids[0]);
     assert!(before.is_some(), "the first stream already has a lane");
 
+    assert!(
+        ids.iter().any(|&id| wire.entry.lane_of(id) == Some(1)),
+        "the load-based choice must have put streams on lane 1 before it degrades"
+    );
+
     source.set(1, false, 900.0);
-    // Migration runs once a second and moves at most MIGRATE_PER_TICK streams,
-    // so allow five ticks before judging it.
+    // The hub ticks once a second, and the transfers can end sooner than that.
+    // Run the ticks here so the check does not depend on how fast the pumps are.
+    // Each tick moves at most MIGRATE_PER_TICK streams.
     let mut settled = false;
-    for _ in 0..60 {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+    for _ in 0..5 {
+        wire.entry.tick().await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
         if ids.iter().all(|&id| wire.entry.lane_of(id) == Some(2)) {
             settled = true;
             break;
