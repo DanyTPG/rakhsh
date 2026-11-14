@@ -42,13 +42,20 @@ pub type Credits = Arc<Mutex<HashMap<u32, Arc<Semaphore>>>>;
 /// How often a lane pings, and whether the period is jittered.
 #[derive(Clone, Copy)]
 pub struct Probe {
+    /// Ping period.
     pub secs: u64,
     pub jitter: bool,
+    /// Heartbeat setting that the dead-lane timeout is derived from.
+    pub hb: u64,
 }
 
 impl Probe {
-    pub fn new(secs: u64, jitter: bool) -> Self {
-        Probe { secs, jitter }
+    pub fn new(t: crate::config::Tuning, jitter: bool) -> Self {
+        Probe {
+            secs: t.probe,
+            jitter,
+            hb: t.heartbeat,
+        }
     }
 }
 
@@ -118,11 +125,14 @@ pub fn spawn_heartbeat(
             } else {
                 period
             };
-            if out_tx.send(crate::wire::ping()).await.is_err() {
-                break;
-            }
+            // Record the ping before it can be answered. A pong that beat the
+            // record would leave one ping with no pong, and the in-order match
+            // in LaneHealth would stay one ping behind for the life of the lane.
             if let Some(m) = crate::status::get() {
                 m.ping_sent(lane_id);
+            }
+            if out_tx.send(crate::wire::ping()).await.is_err() {
+                break;
             }
         }
     }))
