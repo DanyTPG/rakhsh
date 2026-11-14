@@ -53,9 +53,10 @@ rakhsh check -c entry.toml        # lists the links, in order
 
 | key | default | |
 |---|---|---|
-| `link_policy` | `"failover"` | `"failover"`: every lane prefers the first link that works. `"spread"`: lane *n* prefers link *n mod links*. `"adaptive"`: lanes spread across links, dynamic power-of-two choice selection biases streams to the highest throughput / lowest RTT lanes, and severely throttled lanes have active streams migrated off them live. |
+| `link_policy` | `"failover"` | `"failover"`: every lane prefers the first link that works. `"spread"`: lane *n* prefers link *n mod links*. `"adaptive"`: new streams spread across the links by load and RTT, and a lane whose RTT rises to 4 times its baseline (and 150 ms or more) for 3 seconds is degraded, so its streams move to a healthier lane. With `resume = false` there is no migration. |
 | `link_timeout` | `10` | seconds one attempt (dial + handshake) may take |
 | `link_probe` | `30` | seconds between checks for a better link while on a fallback; `0` = never move back |
+| `heartbeat` | `10`, `2` under `adaptive` | seconds between pings on a lane; the adaptive policy needs a fast RTT signal, so it defaults to 2 s (jittered by 80%-120%) unless set here |
 
 A `[[link]]` may override `sni`, `ws_path`, `ws_credential`, `decoy`, `edge_ip`, `tls_fingerprint`, `cert_path`,
 `key_path`, `quic_mask`, `quic_version` and `reliability`; everything else is inherited from the top level, which is
@@ -78,8 +79,10 @@ come up on wss in 0.3-0.6 s.
   they move to another lane and go on. `link_probe = 0` trades the move for staying put.
 - A losing attempt that had already reached the peer shows up there as a lane that authenticates and ends at once.
 - **A link is "up" when it authenticates and stays up, not when it is fast.** A carrier that the network throttles but
-  does not block (the Iran filter did this to QUIC v2: handshake fine, data at 1-10 Mbit/s) still counts as up, so put
-  the carrier you trust most first. Quality-aware selection is not built.
+  does not block (the Iran filter did this to QUIC v2: handshake fine, data at 1-10 Mbit/s) still counts as up.
+  `link_policy = "adaptive"` is the answer to that: it watches each lane's RTT against that lane's own baseline, and a
+  lane that stays at 4 times its baseline (and at least 150 ms worse) for 3 seconds is degraded, so its streams move to
+  a lane that is still healthy. A steady slow lane is not degraded, only a lane that used to be fast and no longer is.
 - A dialing process that is killed abruptly leaves its QUIC lanes alive on the accepting side until the 30 s dead-peer
   timer (a killed TCP lane is noticed at once). Restart the accepting side too, or wait, before judging a restart.
 - Which carrier works is the network's decision: links make the tunnel survive a blocked carrier, they do not
@@ -94,4 +97,8 @@ WARN link wss 203.0.113.9:443 failed: no answer within 10s
 INFO lane 2 up via quicv2 203.0.113.9:443
 INFO lane 2 moving up to wss 203.0.113.9:443
 INFO lane 1 authenticated via wss 0.0.0.0:443          (accepting side)
+INFO lane 2 degraded: cur 431 ms, baseline 84 ms       (adaptive)
+INFO adaptive policy: moving stream 9f3c1a from lane 2 to lane 1
 ```
+
+`rakhsh status` prints the same state per link, as `healthy` or `degraded`.

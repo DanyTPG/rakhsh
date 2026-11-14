@@ -108,7 +108,9 @@ preset = "balance"
 #   throughput       15           30
 
 # heartbeat = 10
-# Seconds between lane heartbeats. Overrides the preset.
+# Seconds between lane heartbeats. Overrides the preset. With
+# link_policy = "adaptive" the default becomes 2 s, because the policy reads
+# RTT growth; set it here to keep a slower probe on an adaptive tunnel.
 
 # keepalive = 30
 # How long, in seconds, a lane socket may sit idle before TCP keepalive
@@ -399,8 +401,12 @@ link_policy = "failover"
 #             it recovers.
 #   spread    lane n starts its attempts at link n, so the lanes end up
 #             spread across the links that work.
-#   adaptive  lanes spread across links and dynamically weight/migrate streams
-#             based on measured throughput, RTT and packet loss.
+#   adaptive  new streams spread across the links by load and RTT. A lane
+#             whose RTT rises to 4 times its own baseline (and 150 ms or
+#             more) for 3 seconds counts as degraded and its streams move to
+#             a healthier lane; a steady slow lane is left alone. Migration
+#             needs resume = true. Under adaptive the heartbeat defaults to
+#             2 s, because RTT growth is the signal it reads.
 
 link_timeout = 10
 # How long, in seconds, one attempt on one link may take before the next link
