@@ -13,6 +13,7 @@ mod entry;
 mod exit;
 mod fleet;
 mod l3;
+pub mod lanehealth;
 mod limits;
 mod links;
 #[cfg(target_os = "macos")]
