@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use serde_json::{json, Value};
+#[cfg(unix)]
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
