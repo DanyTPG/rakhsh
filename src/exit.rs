@@ -16,7 +16,7 @@ use crate::noise::{Enc, Keys};
 use crate::resume;
 use crate::session::{
     deregister, register, run_stream, run_udp_exit, spawn_heartbeat, spawn_writer, Credits,
-    LaneTasks, Streams,
+    LaneTasks, Probe, Streams,
 };
 use crate::wire::{self, Frame, FLAG_UDP};
 
@@ -74,8 +74,9 @@ pub async fn run(cfg: Config) -> Result<()> {
     crate::stats::spawn_logger();
     spawn_xui_poller(&cfg);
     let hb = cfg.tuning().heartbeat;
+    let adaptive = cfg.link_policy.as_deref() == Some("adaptive");
+    let probe = Probe::new(hb, adaptive);
     crate::engine::spawn(&cfg, None).await?;
-
     let hub = resume::from_cfg(&cfg, false);
     if let Some(h) = &hub {
         metrics.bind_hub(h);
@@ -92,7 +93,7 @@ pub async fn run(cfg: Config) -> Result<()> {
                     enc,
                     l3: l3.clone(),
                     hub: hub.clone(),
-                    hb,
+                    probe,
                     stream_gauge: gauge,
                 };
                 let r = serve_exit_lane(tx, rx, lane_id, ctx).await;
@@ -114,7 +115,7 @@ struct ExitCtx {
     enc: Enc,
     l3: Option<Arc<L3>>,
     hub: Option<Arc<resume::Hub>>,
-    hb: u64,
+    probe: Probe,
     stream_gauge: Arc<AtomicUsize>,
 }
 
@@ -123,7 +124,7 @@ async fn serve_exit_lane(tx: BoxTx, mut rx: BoxRx, lane_id: u64, ctx: ExitCtx) -
         enc,
         l3,
         hub,
-        hb,
+        probe,
         stream_gauge,
     } = ctx;
     let (l3, hub) = (&l3, &hub);
@@ -133,9 +134,10 @@ async fn serve_exit_lane(tx: BoxTx, mut rx: BoxRx, lane_id: u64, ctx: ExitCtx) -
     }
     let mut tasks = LaneTasks::default();
     tasks.add(spawn_writer(tx, enc.clone(), out_rx, lane_id));
-    if let Some(h) = spawn_heartbeat(out_tx.clone(), hb, lane_id) {
+    if let Some(h) = spawn_heartbeat(out_tx.clone(), probe.secs, lane_id, probe.jitter) {
         tasks.add(h);
     }
+    let hb = probe.secs;
     if let Some(sync) = SYNC_TX.get() {
         let mut rx_set = sync.subscribe();
         let out = out_tx.clone();

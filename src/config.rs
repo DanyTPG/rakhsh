@@ -376,8 +376,14 @@ impl Config {
             "throughput" => (15, 30),
             _ => (10, 30),
         };
+        // Adaptive lane choice reads RTT growth, and a 10 s probe is far too
+        // coarse to see a spike before it is already hurting the user.
+        let adaptive = self.link_policy.as_deref() == Some("adaptive");
+        let heartbeat = self
+            .heartbeat
+            .unwrap_or(if adaptive { hb.min(2) } else { hb });
         Tuning {
-            heartbeat: self.heartbeat.unwrap_or(hb),
+            heartbeat,
             keepalive: self.keepalive.unwrap_or(ka),
             rcvbuf: self.so_rcvbuf,
             sndbuf: self.so_sndbuf,

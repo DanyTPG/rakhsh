@@ -338,17 +338,6 @@ pub struct Hub {
     adaptive: bool,
 }
 
-fn random_u64() -> u64 {
-    use ring::rand::{SecureRandom, SystemRandom};
-    let mut b = [0u8; 8];
-    if SystemRandom::new().fill(&mut b).is_err() {
-        return std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(1, |d| d.as_nanos() as u64);
-    }
-    u64::from_be_bytes(b)
-}
-
 impl Hub {
     pub fn new(entry: bool, grace: Duration, adaptive: bool) -> Arc<Hub> {
         let hub = Arc::new(Hub {
@@ -358,7 +347,7 @@ impl Hub {
                 rr: 0,
                 closed: HashMap::new(),
             }),
-            next_id: AtomicU64::new(random_u64()),
+            next_id: AtomicU64::new(crate::rng::random_u64()),
             entry,
             grace,
             resent: AtomicU64::new(0),
@@ -434,8 +423,9 @@ impl Hub {
                             .iter()
                             .map(|l| (l.id, m.lane_score(l.id), l.clone()))
                             .collect();
-                        scores
-                            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                        scores.sort_by(|a, b| {
+                            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+                        });
                         let (_, best_score, best_lane) = &scores[0];
                         let (worst_id, worst_score, _) = &scores[scores.len() - 1];
                         if *best_score > 2.0 && *worst_score < (*best_score * 0.15) {

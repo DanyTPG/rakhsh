@@ -28,6 +28,7 @@ mod raw;
 #[path = "raw_stub.rs"]
 mod raw;
 mod resume;
+mod rng;
 mod route;
 mod session;
 mod stats;

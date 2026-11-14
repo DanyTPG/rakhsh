@@ -17,8 +17,8 @@ use crate::links;
 use crate::noise::{Enc, Keys};
 use crate::resume;
 use crate::session::{
-    deregister, register, run_stream, spawn_heartbeat, spawn_writer, Credits, LaneTasks, Session,
-    Streams,
+    deregister, register, run_stream, spawn_heartbeat, spawn_writer, Credits, LaneTasks, Probe,
+    Session, Streams,
 };
 use crate::wire::{self, Frame, FLAG_UDP};
 
@@ -85,6 +85,7 @@ pub async fn run(cfg: Config) -> Result<()> {
     let metrics = crate::status::init(&cfg, "entry");
     tokio::spawn(crate::status::serve(crate::status::socket_path(&cfg)));
     let l3 = crate::l3::setup(&cfg)?;
+    let adaptive = cfg.link_policy.as_deref() == Some("adaptive");
 
     let pool = Pool {
         lanes: Arc::new(Mutex::new(Vec::new())),
@@ -93,7 +94,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         limit: cfg.max_connections.unwrap_or(0),
         limits: Limiter::new(&cfg, true)?,
         hub: resume::from_cfg(&cfg, true),
-        adaptive: cfg.link_policy.as_deref() == Some("adaptive"),
+        adaptive,
     };
     metrics.bind_active(pool.active.clone());
     metrics.bind_limiter(&pool.limits);
@@ -114,7 +115,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         });
     }
     crate::stats::spawn_logger();
-    let hb = cfg.tuning().heartbeat;
+    let probe = Probe::new(cfg.tuning().heartbeat, adaptive);
 
     crate::engine::spawn(&cfg, Some(pool.clone())).await?;
     init_dyn(&cfg, &pool);
@@ -141,7 +142,7 @@ pub async fn run(cfg: Config) -> Result<()> {
                 if let Some(m) = crate::status::get() {
                     m.lane_up(lane_id, &carrier);
                 }
-                let r = serve_entry_lane(tx, rx, enc, lane_id, &pool, &l3, hb).await;
+                let r = serve_entry_lane(tx, rx, enc, lane_id, &pool, &l3, probe).await;
                 if let Some(m) = crate::status::get() {
                     m.lane_down(lane_id);
                 }
@@ -163,7 +164,7 @@ async fn serve_entry_lane(
     lane_id: u64,
     pool: &Pool,
     l3: &Option<Arc<L3>>,
-    hb: u64,
+    probe: Probe,
 ) -> Result<()> {
     let (out_tx, out_rx) = mpsc::channel::<Vec<u8>>(1024);
     if let Some(l3) = l3 {
@@ -171,9 +172,10 @@ async fn serve_entry_lane(
     }
     let mut tasks = LaneTasks::default();
     tasks.add(spawn_writer(tx, enc.clone(), out_rx, lane_id));
-    if let Some(h) = spawn_heartbeat(out_tx.clone(), hb, lane_id) {
+    if let Some(h) = spawn_heartbeat(out_tx.clone(), probe.secs, lane_id, probe.jitter) {
         tasks.add(h);
     }
+    let hb = probe.secs;
     let dead = Duration::from_secs(hb.max(5).saturating_mul(3).max(if pool.hub.is_some() {
         15
     } else {

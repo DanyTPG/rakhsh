@@ -39,6 +39,19 @@ pub(crate) async fn write_all_chunks(
 pub type Streams = Arc<Mutex<HashMap<u32, mpsc::UnboundedSender<Bytes>>>>;
 pub type Credits = Arc<Mutex<HashMap<u32, Arc<Semaphore>>>>;
 
+/// How often a lane pings, and whether the period is jittered.
+#[derive(Clone, Copy)]
+pub struct Probe {
+    pub secs: u64,
+    pub jitter: bool,
+}
+
+impl Probe {
+    pub fn new(secs: u64, jitter: bool) -> Self {
+        Probe { secs, jitter }
+    }
+}
+
 #[derive(Clone)]
 pub struct Session {
     pub lane_id: u64,
@@ -82,19 +95,29 @@ impl Drop for LaneTasks {
     }
 }
 
+/// One ping each period, until the lane closes.
+///
+/// With `jitter`, each interval is 80%-120% of the period, so the probes of
+/// several lanes do not fall into a pattern that a policer can learn.
 pub fn spawn_heartbeat(
     out_tx: mpsc::Sender<Vec<u8>>,
     secs: u64,
     lane_id: u64,
+    jitter: bool,
 ) -> Option<tokio::task::JoinHandle<()>> {
     if secs == 0 {
         return None;
     }
     Some(tokio::spawn(async move {
-        let mut tick = tokio::time::interval(std::time::Duration::from_secs(secs));
-        tick.tick().await;
+        let period = std::time::Duration::from_secs(secs);
+        let mut next = period;
         loop {
-            tick.tick().await;
+            tokio::time::sleep(next).await;
+            next = if jitter {
+                period.mul_f64(0.8 + (crate::rng::random_u64() % 401) as f64 / 1000.0)
+            } else {
+                period
+            };
             if out_tx.send(crate::wire::ping()).await.is_err() {
                 break;
             }
