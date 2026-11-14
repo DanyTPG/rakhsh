@@ -144,3 +144,26 @@ fn a_repeated_key_is_refused_rather_than_silently_shadowing() {
     let err = c.peer_keys().unwrap_err().to_string();
     assert!(err.contains("repeats a public key"), "got: {err}");
 }
+
+#[test]
+fn adaptive_pings_fast_but_keeps_the_dead_lane_basis() {
+    let tuning = |extra: &str| {
+        toml::from_str::<Config>(&format!("role = \"entry\"\n{extra}"))
+            .unwrap()
+            .tuning()
+    };
+    let plain = tuning("");
+    assert_eq!((plain.heartbeat, plain.probe), (10, 10));
+    let adaptive = tuning("link_policy = \"adaptive\"\n");
+    assert_eq!(
+        (adaptive.heartbeat, adaptive.probe),
+        (10, 2),
+        "ping faster, dead-lane basis unchanged"
+    );
+    let set = tuning("link_policy = \"adaptive\"\nheartbeat = 7\n");
+    assert_eq!(
+        (set.heartbeat, set.probe),
+        (7, 7),
+        "an explicit heartbeat wins"
+    );
+}

@@ -73,9 +73,8 @@ pub async fn run(cfg: Config) -> Result<()> {
     let l3 = crate::l3::setup(&cfg)?;
     crate::stats::spawn_logger();
     spawn_xui_poller(&cfg);
-    let hb = cfg.tuning().heartbeat;
     let adaptive = cfg.link_policy.as_deref() == Some("adaptive");
-    let probe = Probe::new(hb, adaptive);
+    let probe = Probe::new(cfg.tuning(), adaptive);
     crate::engine::spawn(&cfg, None).await?;
     let hub = resume::from_cfg(&cfg, false);
     if let Some(h) = &hub {
@@ -137,7 +136,7 @@ async fn serve_exit_lane(tx: BoxTx, mut rx: BoxRx, lane_id: u64, ctx: ExitCtx) -
     if let Some(h) = spawn_heartbeat(out_tx.clone(), probe.secs, lane_id, probe.jitter) {
         tasks.add(h);
     }
-    let hb = probe.secs;
+    let hb = probe.hb;
     if let Some(sync) = SYNC_TX.get() {
         let mut rx_set = sync.subscribe();
         let out = out_tx.clone();

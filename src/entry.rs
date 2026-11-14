@@ -117,7 +117,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         });
     }
     crate::stats::spawn_logger();
-    let probe = Probe::new(cfg.tuning().heartbeat, adaptive);
+    let probe = Probe::new(cfg.tuning(), adaptive);
 
     crate::engine::spawn(&cfg, Some(pool.clone())).await?;
     init_dyn(&cfg, &pool);
@@ -177,7 +177,7 @@ async fn serve_entry_lane(
     if let Some(h) = spawn_heartbeat(out_tx.clone(), probe.secs, lane_id, probe.jitter) {
         tasks.add(h);
     }
-    let hb = probe.secs;
+    let hb = probe.hb;
     let dead = Duration::from_secs(hb.max(5).saturating_mul(3).max(if pool.hub.is_some() {
         15
     } else {
