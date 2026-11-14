@@ -1333,7 +1333,11 @@ impl TcpMux {
         }
 
         self.sinks.lock().expect("sinks").insert(sid, tx);
-        self.snd.lock().expect("snd").entry(sid).or_insert_with(|| Snd::new(target));
+        self.snd
+            .lock()
+            .expect("snd")
+            .entry(sid)
+            .or_insert_with(|| Snd::new(target));
         self.notify.notify_one();
 
         tokio::spawn(async move {
