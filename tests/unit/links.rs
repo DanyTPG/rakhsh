@@ -144,27 +144,3 @@ fn a_repeated_key_is_refused_rather_than_silently_shadowing() {
     let err = c.peer_keys().unwrap_err().to_string();
     assert!(err.contains("repeats a public key"), "got: {err}");
 }
-
-#[test]
-fn adaptive_score_formula_edge_cases() {
-    let score = |rate_bps: f64, rtt_ms: f64, loss_pct: f64| -> f64 {
-        let rtt = rtt_ms.max(1.0);
-        let loss_factor = (1.0 - (loss_pct / 100.0)).max(0.01);
-        let effective_rate = (rate_bps / 1_000_000.0).max(1.0);
-        (effective_rate / (rtt * rtt * 0.0001)) * loss_factor
-    };
-
-    // Zero RTT clamps to 1.0ms; idle rate clamps to 1.0 Mbps
-    let s_zero_rtt = score(0.0, 0.0, 0.0);
-    assert!(s_zero_rtt > 0.0);
-
-    // 100% loss applies 0.01 floor factor
-    let s_loss = score(10_000_000.0, 50.0, 100.0);
-    let s_clean = score(10_000_000.0, 50.0, 0.0);
-    assert!((s_loss - (s_clean * 0.01)).abs() < 1e-6);
-
-    // High throughput raises score proportionally
-    let s_10mbps = score(10_000_000.0, 80.0, 0.0);
-    let s_50mbps = score(50_000_000.0, 80.0, 0.0);
-    assert!((s_50mbps / s_10mbps - 5.0).abs() < 1e-6);
-}

@@ -302,33 +302,6 @@ impl Metrics {
         }
     }
 
-    pub fn lane_score(&self, id: u64) -> f64 {
-        self.lanes
-            .lock()
-            .unwrap()
-            .get(&id)
-            .map(|l| l.score)
-            .unwrap_or(1.0)
-    }
-
-    pub fn lane_loss(&self, id: u64) -> f64 {
-        self.lanes
-            .lock()
-            .unwrap()
-            .get(&id)
-            .map(|l| l.loss_pct())
-            .unwrap_or(0.0)
-    }
-
-    pub fn lane_rate_mbps(&self, id: u64) -> f64 {
-        self.lanes
-            .lock()
-            .unwrap()
-            .get(&id)
-            .map(|l| l.rate_bps / 1_000_000.0)
-            .unwrap_or(0.0)
-    }
-
     pub fn ping_sent(&self, id: u64) {
         let now = Instant::now();
         if let Some(l) = self.lanes.lock().unwrap().get_mut(&id) {

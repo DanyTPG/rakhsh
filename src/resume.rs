@@ -429,6 +429,20 @@ impl Hub {
         self.resent.load(SeqCst)
     }
 
+    /// The lane a live stream is on, for tests that observe the policy.
+    #[cfg(test)]
+    pub fn lane_of(&self, stream: u64) -> Option<u64> {
+        let st = self.st.lock().unwrap();
+        st.streams
+            .get(&stream)
+            .and_then(|s| s.link.lock().unwrap().lane.as_ref().map(|l| l.id))
+    }
+
+    #[cfg(test)]
+    pub fn stream_ids(&self) -> Vec<u64> {
+        self.st.lock().unwrap().streams.keys().copied().collect()
+    }
+
     async fn tick(self: &Arc<Self>) {
         let todo: Vec<Arc<RStream>> = {
             let mut st = self.st.lock().unwrap();
@@ -463,71 +477,59 @@ impl Hub {
             }
         }
 
-        // Adaptive stream migration:
-        // When multiple lanes are established, monitor quality scores.
-        // If a lane suffers severe throttling (< 15% of the best lane's score,
-        // with the best lane score > 2.0), migrate active streams off the throttled lane.
-        // Gated on active degradation (loss > 5% or active throughput > 2 Mbps) to prevent
-        // false-positive migrations between idle lanes with different baseline RTTs.
-        let migration_plan: Option<(u64, LaneRef)> = {
-            if !self.adaptive {
-                None
+        // Adaptive migration: a degraded lane loses streams one at a time, and
+        // the target is chosen by load and RTT, not by score rank. The decision
+        // uses the lane itself, never a comparison with its neighbours, so a
+        // healthy-but-busy lane is never drained.
+        let moves: Vec<(u64, u64, u64, Arc<RStream>, LaneRef)> = {
+            let mut st = self.st.lock().unwrap();
+            if !self.adaptive || st.lanes.len() < 2 {
+                Vec::new()
             } else {
-                let st = self.st.lock().unwrap();
-                if st.lanes.len() >= 2 {
-                    if let Some(m) = crate::status::get() {
-                        let mut scores: Vec<(u64, f64, LaneRef)> = st
-                            .lanes
-                            .iter()
-                            .map(|l| (l.id, m.lane_score(l.id), l.clone()))
-                            .collect();
-                        scores.sort_by(|a, b| {
-                            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-                        });
-                        let (_, best_score, best_lane) = &scores[0];
-                        let (worst_id, worst_score, _) = &scores[scores.len() - 1];
-                        if *best_score > 2.0 && *worst_score < (*best_score * 0.15) {
-                            let worst_loss = m.lane_loss(*worst_id);
-                            let best_rate = m.lane_rate_mbps(best_lane.id);
-                            if worst_loss > 5.0 || best_rate > 2.0 {
-                                Some((*worst_id, best_lane.clone()))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
+                let views = self.source.views();
+                let mut c = st.cands(&views);
+                let from_ids = lanehealth::migrations(&c, lanehealth::MIGRATE_PER_TICK);
+                let mut moves = Vec::new();
+                for from in from_ids {
+                    let Some(s) = st
+                        .streams
+                        .values()
+                        .find(|s| {
+                            s.link
+                                .lock()
+                                .unwrap()
+                                .lane
+                                .as_ref()
+                                .is_some_and(|l| l.id == from)
+                        })
+                        .cloned()
+                    else {
+                        continue;
+                    };
+                    let r = st.rr;
+                    st.rr = st.rr.wrapping_add(1);
+                    let Some(i) = lanehealth::choose(&c, r, Some(from)) else {
+                        continue;
+                    };
+                    let target = st.lanes.iter().find(|l| l.id == c[i].id).cloned();
+                    let Some(target) = target else { continue };
+                    if !s.detach_if(from) {
+                        continue;
                     }
-                } else {
-                    None
+                    if let Some(x) = c.iter_mut().find(|x| x.id == from) {
+                        x.streams = x.streams.saturating_sub(1);
+                    }
+                    if let Some(x) = c.iter_mut().find(|x| x.id == target.id) {
+                        x.streams += 1;
+                    }
+                    moves.push((s.id, from, target.id, s, target));
                 }
+                moves
             }
         };
-
-        if let Some((throttled_id, target_lane)) = migration_plan {
-            let to_migrate: Vec<Arc<RStream>> = {
-                let st = self.st.lock().unwrap();
-                st.streams
-                    .values()
-                    .filter(|s| {
-                        let l = s.link.lock().unwrap();
-                        l.lane.as_ref().is_some_and(|x| x.id == throttled_id)
-                    })
-                    .take(2)
-                    .cloned()
-                    .collect()
-            };
-            for s in to_migrate {
-                if s.detach_if(throttled_id) {
-                    info!(
-                        "adaptive policy: evicting stream {:x} from throttled lane {} -> migrating to lane {}",
-                        s.id, throttled_id, target_lane.id
-                    );
-                    s.spawn_attach(target_lane.clone());
-                }
-            }
+        for (id, from, to, s, lane) in moves {
+            info!("adaptive policy: moving stream {id:x} from lane {from} to lane {to}");
+            s.spawn_attach(lane);
         }
     }
 

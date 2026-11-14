@@ -186,11 +186,47 @@ struct Wire {
     pace: Duration,
 }
 
+/// A lane source a test can change while the hubs are running.
+struct FakeSource(Mutex<HashMap<u64, crate::status::LaneView>>);
+
+impl FakeSource {
+    fn new() -> Arc<FakeSource> {
+        Arc::new(FakeSource(Mutex::new(HashMap::new())))
+    }
+
+    fn set(&self, lane: u64, healthy: bool, srtt_ms: f64) {
+        self.0.lock().unwrap().insert(
+            lane,
+            crate::status::LaneView {
+                healthy,
+                srtt_ms: Some(srtt_ms),
+            },
+        );
+    }
+}
+
+impl LaneSource for FakeSource {
+    fn views(&self) -> HashMap<u64, crate::status::LaneView> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
 impl Wire {
     fn new(grace: Duration, pace: Duration) -> Wire {
         Wire {
             entry: Hub::new(true, grace, false),
             exit: Hub::new(false, grace, false),
+            next: 0,
+            pumps: HashMap::new(),
+            pace,
+        }
+    }
+
+    fn new_adaptive(source: Arc<FakeSource>, pace: Duration) -> Wire {
+        let source: Arc<dyn LaneSource> = source;
+        Wire {
+            entry: Hub::with_source(true, Duration::from_secs(30), true, source.clone()),
+            exit: Hub::with_source(false, Duration::from_secs(30), true, source),
             next: 0,
             pumps: HashMap::new(),
             pace,
@@ -366,6 +402,57 @@ async fn many_streams_and_repeated_lane_losses() {
     assert!(
         wire.entry.resent() + wire.exit.resent() > 0,
         "the kills must have cost something to repair"
+    );
+}
+
+#[tokio::test]
+async fn adaptive_moves_streams_off_a_degraded_lane_intact() {
+    let source = FakeSource::new();
+    source.set(1, true, 80.0);
+    source.set(2, true, 85.0);
+    let mut wire = Wire::new_adaptive(source.clone(), Duration::from_micros(300));
+    let target = echo_server().await;
+    let (one, two) = (wire.lane(), wire.lane());
+    assert_eq!((one, two), (1, 2));
+
+    let mut tasks = Vec::new();
+    let payloads: Vec<u8> = (0..4usize).map(|i| 0xa0 + i as u8).collect();
+    for &byte in &payloads {
+        let user = user_through(&wire, &target).await;
+        let data = vec![byte; 2 * 1024 * 1024];
+        let want = digest(&data);
+        tasks.push((tokio::spawn(echo_through(user, data)), want, byte));
+    }
+    tokio::time::sleep(Duration::from_millis(120)).await;
+
+    let ids: Vec<u64> = wire.entry.stream_ids();
+    assert_eq!(ids.len(), 4, "four live streams");
+    let before = wire.entry.lane_of(ids[0]);
+    assert!(before.is_some(), "the first stream already has a lane");
+
+    source.set(1, false, 900.0);
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        if ids.iter().all(|&id| wire.entry.lane_of(id) == Some(2)) {
+            break;
+        }
+    }
+    for &id in &ids {
+        let lane = wire.entry.lane_of(id);
+        assert!(
+            lane == Some(2) || lane.is_none(),
+            "stream {id:x} is still on lane 1: {lane:?}"
+        );
+    }
+
+    for (t, want, byte) in tasks {
+        let got = t.await.unwrap();
+        assert_eq!(got.len(), 2 * 1024 * 1024);
+        assert_eq!(digest(&got), want, "stream {byte:x} lost bytes");
+    }
+    assert!(
+        wire.entry.resent() + wire.exit.resent() > 0,
+        "the migration must have cost something to repair"
     );
 }
 
