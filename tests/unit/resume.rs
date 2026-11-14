@@ -431,12 +431,20 @@ async fn adaptive_moves_streams_off_a_degraded_lane_intact() {
     assert!(before.is_some(), "the first stream already has a lane");
 
     source.set(1, false, 900.0);
-    for _ in 0..10 {
-        tokio::time::sleep(Duration::from_millis(150)).await;
+    // Migration runs once a second and moves at most MIGRATE_PER_TICK streams,
+    // so allow five ticks before judging it.
+    let mut settled = false;
+    for _ in 0..60 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
         if ids.iter().all(|&id| wire.entry.lane_of(id) == Some(2)) {
+            settled = true;
             break;
         }
     }
+    assert!(
+        settled,
+        "every stream should move to lane 2 within five ticks"
+    );
     for &id in &ids {
         let lane = wire.entry.lane_of(id);
         assert!(
