@@ -92,7 +92,6 @@ impl LaneInfo {
 }
 
 /// What the link chooser needs from a lane, copied out of the lane map.
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub struct LaneView {
     pub healthy: bool,
@@ -338,7 +337,6 @@ impl Metrics {
     }
 
     /// One locked pass over the lanes, copied out for the linker.
-    #[allow(dead_code)]
     pub fn lane_views(&self) -> HashMap<u64, LaneView> {
         self.lanes
             .lock()
