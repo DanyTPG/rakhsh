@@ -12,6 +12,7 @@ use tracing::{info, warn};
 use crate::carrier::{BoxRx, BoxTx};
 use crate::config::{Config, Forward};
 use crate::l3::L3;
+use crate::lanehealth;
 use crate::limits::{Limiter, StreamMeter};
 use crate::links;
 use crate::noise::{Enc, Keys};
@@ -44,22 +45,23 @@ impl Pool {
             let idx = self.rr.fetch_add(1, SeqCst) % n;
             return Some(v[idx].clone());
         }
+        let views = crate::status::get()
+            .map(|m| m.lane_views())
+            .unwrap_or_default();
+        let cands: Vec<lanehealth::Cand> = v
+            .iter()
+            .map(|s| {
+                let view = views.get(&s.lane_id);
+                lanehealth::Cand {
+                    id: s.lane_id,
+                    healthy: view.is_none_or(|x| x.healthy),
+                    srtt_ms: view.and_then(|x| x.srtt_ms),
+                    streams: s.streams.lock().unwrap().len() as u32,
+                }
+            })
+            .collect();
         let r = self.rr.fetch_add(1, SeqCst);
-        let idx1 = r % n;
-        let idx2 = (idx1 + 1 + ((r / n) % (n - 1))) % n;
-        let s1 = &v[idx1];
-        let s2 = &v[idx2];
-        let score1 = crate::status::get()
-            .map(|m| m.lane_score(s1.lane_id))
-            .unwrap_or(1.0);
-        let score2 = crate::status::get()
-            .map(|m| m.lane_score(s2.lane_id))
-            .unwrap_or(1.0);
-        if score1 >= score2 {
-            Some(s1.clone())
-        } else {
-            Some(s2.clone())
-        }
+        lanehealth::choose(&cands, r, None).map(|i| v[i].clone())
     }
     fn remove(&self, lane_id: u64) {
         self.lanes.lock().unwrap().retain(|s| s.lane_id != lane_id);

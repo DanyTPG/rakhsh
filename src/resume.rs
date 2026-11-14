@@ -9,9 +9,11 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, watch, Semaphore};
 use tracing::{debug, info, warn};
 
+use crate::lanehealth::{self, Cand};
 use crate::limits::StreamMeter;
 use crate::noise::TAG;
 use crate::session::{write_all_chunks, WINDOW};
+use crate::status::LaneView;
 use crate::wire::{FLAG_PROXY, MAX_PAYLOAD};
 
 pub const R_OPEN: u8 = 10;
@@ -280,10 +282,59 @@ struct HubState {
     lanes: Vec<LaneRef>,
     rr: usize,
     closed: HashMap<u64, Instant>,
+    load: HashMap<u64, u32>,
+}
+
+/// The lane facts a pick needs, so the policy can be tested with a fake.
+pub trait LaneSource: Send + Sync {
+    fn views(&self) -> HashMap<u64, LaneView>;
+}
+
+impl LaneSource for crate::status::Metrics {
+    fn views(&self) -> HashMap<u64, LaneView> {
+        self.lane_views()
+    }
+}
+
+/// Reads the process-wide metrics, if this process has any.
+struct GlobalLanes;
+
+impl LaneSource for GlobalLanes {
+    fn views(&self) -> HashMap<u64, LaneView> {
+        crate::status::get()
+            .map(|m| m.lane_views())
+            .unwrap_or_default()
+    }
 }
 
 impl HubState {
-    fn pick(&mut self, adaptive: bool) -> Option<LaneRef> {
+    /// Recompute the per-lane stream counts from the live streams.
+    fn refresh_load(&mut self) {
+        let mut load: HashMap<u64, u32> = HashMap::new();
+        for s in self.streams.values() {
+            if let Some(id) = s.link.lock().unwrap().lane.as_ref().map(|l| l.id) {
+                *load.entry(id).or_insert(0) += 1;
+            }
+        }
+        self.load = load;
+    }
+
+    fn cands(&self, views: &HashMap<u64, LaneView>) -> Vec<Cand> {
+        self.lanes
+            .iter()
+            .map(|l| {
+                let view = views.get(&l.id);
+                Cand {
+                    id: l.id,
+                    healthy: view.is_none_or(|v| v.healthy),
+                    srtt_ms: view.and_then(|v| v.srtt_ms),
+                    streams: self.load.get(&l.id).copied().unwrap_or(0),
+                }
+            })
+            .collect()
+    }
+
+    fn pick(&mut self, adaptive: bool, source: &dyn LaneSource) -> Option<LaneRef> {
         if self.lanes.is_empty() {
             return None;
         }
@@ -294,25 +345,12 @@ impl HubState {
             return Some(self.lanes[idx].clone());
         }
 
-        let idx1 = self.rr % n;
-        let idx2 = (idx1 + 1 + ((self.rr / n) % (n - 1))) % n;
+        let c = self.cands(&source.views());
+        let idx = lanehealth::choose(&c, self.rr, None)?;
         self.rr = self.rr.wrapping_add(1);
-
-        let lane1 = &self.lanes[idx1];
-        let lane2 = &self.lanes[idx2];
-
-        let score1 = crate::status::get()
-            .map(|m| m.lane_score(lane1.id))
-            .unwrap_or(1.0);
-        let score2 = crate::status::get()
-            .map(|m| m.lane_score(lane2.id))
-            .unwrap_or(1.0);
-
-        if score1 >= score2 {
-            Some(lane1.clone())
-        } else {
-            Some(lane2.clone())
-        }
+        let lane = self.lanes.get(idx)?.clone();
+        *self.load.entry(lane.id).or_insert(0) += 1;
+        Some(lane)
     }
 }
 
@@ -336,22 +374,36 @@ pub struct Hub {
     grace: Duration,
     resent: AtomicU64,
     adaptive: bool,
+    source: Arc<dyn LaneSource>,
 }
 
 impl Hub {
     pub fn new(entry: bool, grace: Duration, adaptive: bool) -> Arc<Hub> {
+        Hub::with_source(entry, grace, adaptive, Arc::new(GlobalLanes))
+    }
+
+    /// A hub that reads its lane health from `source` instead of the global
+    /// metrics, so a test can hand it a table it controls.
+    pub fn with_source(
+        entry: bool,
+        grace: Duration,
+        adaptive: bool,
+        source: Arc<dyn LaneSource>,
+    ) -> Arc<Hub> {
         let hub = Arc::new(Hub {
             st: Mutex::new(HubState {
                 streams: HashMap::new(),
                 lanes: Vec::new(),
                 rr: 0,
                 closed: HashMap::new(),
+                load: HashMap::new(),
             }),
             next_id: AtomicU64::new(crate::rng::random_u64()),
             entry,
             grace,
             resent: AtomicU64::new(0),
             adaptive,
+            source,
         });
         let w = Arc::downgrade(&hub);
         tokio::spawn(async move {
@@ -382,13 +434,14 @@ impl Hub {
             let mut st = self.st.lock().unwrap();
             st.closed
                 .retain(|_, t| t.elapsed() < Duration::from_secs(10));
+            st.refresh_load();
             let todo = st
                 .streams
                 .values()
                 .filter(|s| s.needs_attention())
                 .cloned()
                 .collect();
-            (todo, st.pick(self.adaptive))
+            (todo, st.pick(self.adaptive, self.source.as_ref()))
         };
         for s in todo {
             if s.finished_for().is_some_and(|t| t > self.grace) {
@@ -486,7 +539,7 @@ impl Hub {
                 .collect();
             detached
                 .into_iter()
-                .filter_map(|s| st.pick(self.adaptive).map(|l| (s, l)))
+                .filter_map(|s| st.pick(self.adaptive, self.source.as_ref()).map(|l| (s, l)))
                 .collect()
         };
         if !waiting.is_empty() {
@@ -507,7 +560,7 @@ impl Hub {
                 .filter(|s| s.detach_if(lane))
                 .cloned()
                 .collect();
-            (lost, st.pick(self.adaptive))
+            (lost, st.pick(self.adaptive, self.source.as_ref()))
         };
         if lost.is_empty() {
             return;
@@ -577,7 +630,11 @@ impl Hub {
         target: &str,
         client: Option<&str>,
     ) -> Option<Arc<RStream>> {
-        let lane = self.st.lock().unwrap().pick(self.adaptive)?;
+        let lane = self
+            .st
+            .lock()
+            .unwrap()
+            .pick(self.adaptive, self.source.as_ref())?;
         let id = self.next_id.fetch_add(1, SeqCst);
         let frame = open_frame(id, client, target);
         let s = self.new_stream(id, Some(lane), Some(frame.clone()), false);
