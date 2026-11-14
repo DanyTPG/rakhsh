@@ -125,6 +125,39 @@ fn too_few_samples_never_degrades() {
 }
 
 #[test]
+fn a_pong_that_beats_its_own_ping_shifts_every_later_match() {
+    // The hazard that the heartbeat ordering guards against. If a pong is
+    // handled before its ping is recorded, that pong finds an empty queue and
+    // is dropped, the ping is recorded afterwards, and from then on every pong
+    // matches the previous ping. Each sample then spans a whole probe period,
+    // so the lane reads far slower than it is for as long as it lives.
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+
+    let before = h.srtt_ms().unwrap();
+    h.pong_recv(t + ms(80));
+    assert_eq!(
+        h.srtt_ms(),
+        Some(before),
+        "a pong with no ping in flight is dropped"
+    );
+
+    h.ping_sent(t + ms(95));
+    let mut now = t + ms(95);
+    for _ in 0..30 {
+        now += ms(2000);
+        h.ping_sent(now);
+        h.pong_recv(now + ms(80));
+    }
+    assert!(
+        h.srtt_ms().unwrap() > 1500.0,
+        "one desynced ping keeps every later sample a period too long: {:?}",
+        h.srtt_ms()
+    );
+}
+
+#[test]
 fn choose_needs_a_lane() {
     assert_eq!(choose(&[], 0, None), None);
     let one = [Cand {
