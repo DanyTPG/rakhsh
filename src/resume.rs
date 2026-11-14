@@ -430,18 +430,16 @@ impl Hub {
     }
 
     async fn tick(self: &Arc<Self>) {
-        let (todo, lane): (Vec<Arc<RStream>>, Option<LaneRef>) = {
+        let todo: Vec<Arc<RStream>> = {
             let mut st = self.st.lock().unwrap();
             st.closed
                 .retain(|_, t| t.elapsed() < Duration::from_secs(10));
             st.refresh_load();
-            let todo = st
-                .streams
+            st.streams
                 .values()
                 .filter(|s| s.needs_attention())
                 .cloned()
-                .collect();
-            (todo, st.pick(self.adaptive, self.source.as_ref()))
+                .collect()
         };
         for s in todo {
             if s.finished_for().is_some_and(|t| t > self.grace) {
@@ -453,8 +451,15 @@ impl Hub {
                     self.grace.as_secs()
                 );
                 s.abort(true).await;
-            } else if let (Some(_), Some(l)) = (s.detached_for(), lane.clone()) {
-                s.spawn_attach(l);
+            } else if s.detached_for().is_some() {
+                let lane = self
+                    .st
+                    .lock()
+                    .unwrap()
+                    .pick(self.adaptive, self.source.as_ref());
+                if let Some(l) = lane {
+                    s.spawn_attach(l);
+                }
             }
         }
 
@@ -551,32 +556,38 @@ impl Hub {
     }
 
     pub fn lane_down(self: &Arc<Self>, lane: u64) {
-        let (lost, other): (Vec<Arc<RStream>>, Option<LaneRef>) = {
+        let lost: Vec<Arc<RStream>> = {
             let mut st = self.st.lock().unwrap();
             st.lanes.retain(|x| x.id != lane);
-            let lost = st
-                .streams
+            st.streams
                 .values()
                 .filter(|s| s.detach_if(lane))
                 .cloned()
-                .collect();
-            (lost, st.pick(self.adaptive, self.source.as_ref()))
+                .collect()
         };
         if lost.is_empty() {
             return;
         }
-        match other {
-            Some(l) => {
-                info!(
-                    "lane {lane} down: {} stream(s) move to lane {}",
-                    lost.len(),
-                    l.id
-                );
-                for s in lost {
-                    s.spawn_attach(l.clone());
-                }
+        let total = lost.len();
+        let mut waiting = 0usize;
+        for s in lost {
+            let target = self
+                .st
+                .lock()
+                .unwrap()
+                .pick(self.adaptive, self.source.as_ref());
+            match target {
+                Some(l) => s.spawn_attach(l),
+                None => waiting += 1,
             }
-            None => info!("lane {lane} down: {} stream(s) wait for a lane", lost.len()),
+        }
+        if waiting == total {
+            info!("lane {lane} down: {total} stream(s) wait for a lane");
+        } else {
+            info!(
+                "lane {lane} down: {} stream(s) move to another lane, {waiting} wait",
+                total - waiting
+            );
         }
     }
 
