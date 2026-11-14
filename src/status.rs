@@ -1,13 +1,14 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering::Relaxed};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, oneshot};
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::lanehealth::{LaneHealth, State};
 
 static METRICS: OnceLock<Arc<Metrics>> = OnceLock::new();
 
@@ -56,6 +57,7 @@ struct LaneInfo {
     rate_bps: f64,
     last_rate_bytes: u64,
     score: f64,
+    health: LaneHealth,
 }
 
 impl Default for LaneInfo {
@@ -73,7 +75,8 @@ impl Default for LaneInfo {
             bytes_rx: 0,
             rate_bps: 0.0,
             last_rate_bytes: 0,
-            score: 1.0,
+            score: 100.0,
+            health: LaneHealth::new(Instant::now()),
         }
     }
 }
@@ -85,6 +88,21 @@ impl LaneInfo {
         } else {
             (self.pings - self.pongs.min(self.pings)) as f64 * 100.0 / self.pings as f64
         }
+    }
+}
+
+/// What the link chooser needs from a lane, copied out of the lane map.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug)]
+pub struct LaneView {
+    pub healthy: bool,
+    pub srtt_ms: Option<f64>,
+}
+
+fn state_name(state: State) -> &'static str {
+    match state {
+        State::Healthy => "healthy",
+        State::Degraded => "degraded",
     }
 }
 
@@ -180,7 +198,8 @@ pub fn init(cfg: &Config, role: &str) -> Arc<Metrics> {
             m.peak_rx_bps.fetch_max(rx_bps, Relaxed);
             {
                 let mut lanes = m.lanes.lock().unwrap();
-                for lane in lanes.values_mut() {
+                let now = Instant::now();
+                for (id, lane) in lanes.iter_mut() {
                     let cur = lane.bytes_tx.wrapping_add(lane.bytes_rx);
                     let delta = cur.wrapping_sub(lane.last_rate_bytes) as f64;
                     lane.last_rate_bytes = cur;
@@ -191,11 +210,15 @@ pub fn init(cfg: &Config, role: &str) -> Arc<Metrics> {
                         0.3 * cur_bps + 0.7 * lane.rate_bps
                     };
 
-                    let rtt = lane.rtt_ms.unwrap_or(80.0).max(1.0);
-                    let loss = lane.loss_pct();
-                    let loss_factor = (1.0 - (loss / 100.0)).max(0.01);
-                    let effective_rate = (lane.rate_bps / 1_000_000.0).max(1.0);
-                    lane.score = (effective_rate / (rtt * rtt * 0.0001)) * loss_factor;
+                    if let Some(state) = lane.health.tick(now) {
+                        info!(
+                            "lane {id} {}: cur {:.0} ms, baseline {:.0} ms",
+                            state_name(state),
+                            lane.health.cur_ms(now).unwrap_or(0.0),
+                            lane.health.baseline_ms(now).unwrap_or(0.0)
+                        );
+                    }
+                    lane.score = 100.0 / lane.health.inflation(now).max(1.0);
                 }
             }
             let (cpu_pct, sys_cpu_pct) = m.cpu.lock().unwrap().tick(dt);
@@ -307,16 +330,20 @@ impl Metrics {
     }
 
     pub fn ping_sent(&self, id: u64) {
+        let now = Instant::now();
         if let Some(l) = self.lanes.lock().unwrap().get_mut(&id) {
             l.pings += 1;
             l.waiting = true;
-            l.last_ping = Some(Instant::now());
+            l.last_ping = Some(now);
+            l.health.ping_sent(now);
         }
     }
 
     pub fn pong_recv(&self, id: u64) {
+        let now = Instant::now();
         let mut g = self.lanes.lock().unwrap();
         let Some(l) = g.get_mut(&id) else { return };
+        l.health.pong_recv(now);
         let Some(t) = l.last_ping.take() else { return };
         if !l.waiting {
             return;
@@ -335,6 +362,25 @@ impl Metrics {
                 l.rtt_ms = Some(0.875 * prev + 0.125 * rtt);
             }
         }
+    }
+
+    /// One locked pass over the lanes, copied out for the linker.
+    #[allow(dead_code)]
+    pub fn lane_views(&self) -> HashMap<u64, LaneView> {
+        self.lanes
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, l)| {
+                (
+                    *id,
+                    LaneView {
+                        healthy: l.health.state() == State::Healthy,
+                        srtt_ms: l.health.srtt_ms(),
+                    },
+                )
+            })
+            .collect()
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -379,6 +425,7 @@ impl Metrics {
                 loss_pct: round1(l.loss_pct()),
                 rate_mbps: round1(l.rate_bps / 1_000_000.0),
                 score: round1(l.score),
+                state: state_name(l.health.state()).to_string(),
             })
             .collect();
         let exit = self.role == "exit";
@@ -515,6 +562,8 @@ pub struct LinkSnap {
     pub rate_mbps: f64,
     #[serde(default)]
     pub score: f64,
+    #[serde(default)]
+    pub state: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Default)]
@@ -1100,10 +1149,11 @@ pub fn print_table(s: &Snapshot) {
                 .map(|r| format!("{r:.1} ms",))
                 .unwrap_or_else(|| "—".into());
             println!(
-                "    #{:<4}{:<10} up {:<8} rtt {rtt:<10} jitter {:.1} ms  loss {:.1}%  rate {:.1} Mbps  score {:.1}",
+                "    #{:<4}{:<10} up {:<8} {:<9} rtt {rtt:<10} jitter {:.1} ms  loss {:.1}%  rate {:.1} Mbps  score {:.1}",
                 l.id,
                 l.label,
                 dur(l.up_secs),
+                l.state,
                 l.jitter_ms,
                 l.loss_pct,
                 l.rate_mbps,
