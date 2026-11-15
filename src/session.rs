@@ -102,6 +102,21 @@ impl Drop for LaneTasks {
     }
 }
 
+/// Record a ping, then send it.
+///
+/// The order is load-bearing. A pong that is handled before its ping is
+/// recorded finds an empty queue, is dropped, and leaves the in-order match in
+/// `LaneHealth` one ping behind for the life of the lane. Both effects happen
+/// here so the order can be pinned by a test.
+async fn probe_round(
+    lane_id: u64,
+    record: impl FnOnce(u64),
+    send: impl std::future::Future<Output = Result<(), mpsc::error::SendError<Vec<u8>>>>,
+) -> Result<(), mpsc::error::SendError<Vec<u8>>> {
+    record(lane_id);
+    send.await
+}
+
 /// One ping each period, until the lane closes.
 ///
 /// With `jitter`, each interval is 80%-120% of the period, so the probes of
@@ -125,13 +140,18 @@ pub fn spawn_heartbeat(
             } else {
                 period
             };
-            // Record the ping before it can be answered. A pong that beat the
-            // record would leave one ping with no pong, and the in-order match
-            // in LaneHealth would stay one ping behind for the life of the lane.
-            if let Some(m) = crate::status::get() {
-                m.ping_sent(lane_id);
-            }
-            if out_tx.send(crate::wire::ping()).await.is_err() {
+            let sent = probe_round(
+                lane_id,
+                |id| {
+                    if let Some(m) = crate::status::get() {
+                        m.ping_sent(id);
+                    }
+                },
+                out_tx.send(crate::wire::ping()),
+            )
+            .await;
+            let sent = sent.is_ok();
+            if !sent {
                 break;
             }
         }
