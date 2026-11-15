@@ -430,7 +430,61 @@ fn a_permanent_step_down_becomes_the_new_normal_at_the_cap() {
         "the new baseline is the throttled RTT: {:?}",
         h.baseline_ms(t)
     );
-    assert_eq!(h.inflation(t), 1.0, "no longer reads as inflated");
+    assert!(
+        (h.inflation(t) - 1.0).abs() < 1e-6,
+        "no longer reads as inflated: {}",
+        h.inflation(t)
+    );
+}
+
+#[test]
+fn a_low_outlier_at_the_cap_does_not_become_the_baseline() {
+    // Re-seeding from the last sample lets an outlier sampled at that moment
+    // become the bucket minimum. A minimum that is too low makes every later
+    // sample look like huge inflation and re-degrades a lane that is fine.
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+    hold(&mut h, &mut t, 400, 5);
+    assert_eq!(h.state(), State::Degraded);
+
+    // One low reading, then no further samples, so it stays the newest one
+    // while the cap runs out. Nothing else can move the bucket minimum.
+    feed(&mut h, &mut t, 20);
+    let mut recovered = None;
+    for _ in 0..30 {
+        t += ms(1000);
+        if let Some(s) = h.tick(t) {
+            recovered = Some(s);
+            break;
+        }
+    }
+    assert_eq!(recovered, Some(State::Healthy), "the cap expires here");
+    let srtt = h.srtt_ms().expect("samples exist");
+    assert!(
+        h.baseline_ms(t).is_some_and(|b| (b - srtt).abs() < 1e-6),
+        "the new baseline is the smoothed RTT ({srtt:?}), not the 20 ms outlier: {:?}",
+        h.baseline_ms(t)
+    );
+    assert!(
+        h.baseline_ms(t).is_some_and(|b| b > 100.0),
+        "far from the outlier: {:?}",
+        h.baseline_ms(t)
+    );
+
+    // The lane carries on at its real rate.
+    hold(&mut h, &mut t, 400, 60);
+    assert_eq!(
+        h.state(),
+        State::Healthy,
+        "an outlier at the cap must not re-degrade the lane: baseline {:?}",
+        h.baseline_ms(t)
+    );
+    assert!(
+        h.inflation(t) < 2.0,
+        "no false inflation from the outlier: {}",
+        h.inflation(t)
+    );
 }
 
 #[test]

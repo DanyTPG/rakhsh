@@ -202,13 +202,19 @@ impl LaneHealth {
     /// The buckets kept advancing against the frozen value, so `bucket_start`
     /// can be far behind; rolling forward from there would wipe `cur_min` and
     /// briefly leave no baseline at all.
+    ///
+    /// The new baseline starts from `srtt`, not from the last sample. A seed
+    /// that is too high corrects itself on the next sample, since `cur_min` is
+    /// a running minimum; a seed that is too low sticks for a whole bucket, and
+    /// a low outlier would then read as huge inflation and re-degrade a healthy
+    /// lane. `srtt` bounds one sample to an eighth of the change.
     fn recover(&mut self, now: Instant) -> State {
         self.state = State::Healthy;
         self.frozen = None;
         self.frozen_at = None;
         self.bucket_start = now;
         self.prev_min = None;
-        self.cur_min = self.last_ms;
+        self.cur_min = self.srtt_ms.or(self.last_ms);
         self.bad_ticks = 0;
         self.good_ticks = 0;
         self.state
