@@ -31,6 +31,9 @@ pub struct LaneHealth {
     bucket_start: Instant,
     cur_min: Option<f64>,
     prev_min: Option<f64>,
+    /// Baseline held while Degraded, so a lasting throttle is never adopted
+    /// as the new normal. Cleared when the lane recovers.
+    frozen: Option<f64>,
     pending: VecDeque<Instant>,
     bad_ticks: u32,
     good_ticks: u32,
@@ -46,6 +49,7 @@ impl LaneHealth {
             bucket_start: now,
             cur_min: None,
             prev_min: None,
+            frozen: None,
             pending: VecDeque::new(),
             bad_ticks: 0,
             good_ticks: 0,
@@ -86,7 +90,15 @@ impl LaneHealth {
     }
 
     /// Lowest RTT seen in the last two buckets, without mutating anything.
+    ///
+    /// While Degraded this is the frozen value, so a throttle that outlasts the
+    /// bucket window is still measured against what the lane used to do.
     pub fn baseline_ms(&self, now: Instant) -> Option<f64> {
+        if self.state == State::Degraded {
+            if let Some(base) = self.frozen {
+                return Some(base);
+            }
+        }
         let age = now.duration_since(self.bucket_start);
         if age < BUCKET {
             return min_opt(self.prev_min, self.cur_min);
@@ -146,6 +158,9 @@ impl LaneHealth {
             self.good_ticks = 0;
             self.bad_ticks += 1;
             if self.state == State::Healthy && self.bad_ticks >= ENTER_TICKS {
+                // Freeze what the lane could do before the throttle began, so
+                // the buckets cannot quietly adopt the new, slower RTT.
+                self.frozen = Some(base);
                 self.state = State::Degraded;
                 self.bad_ticks = 0;
                 self.good_ticks = 0;
@@ -156,6 +171,14 @@ impl LaneHealth {
             self.good_ticks += 1;
             if self.state == State::Degraded && self.good_ticks >= EXIT_TICKS {
                 self.state = State::Healthy;
+                self.frozen = None;
+                // Re-seed the buckets at now. While Degraded the buckets kept
+                // advancing against the frozen value, so bucket_start can be
+                // far behind; rolling forward from here would wipe cur_min and
+                // briefly leave no baseline at all.
+                self.bucket_start = now;
+                self.prev_min = None;
+                self.cur_min = self.last_ms;
                 self.bad_ticks = 0;
                 self.good_ticks = 0;
                 return Some(self.state);

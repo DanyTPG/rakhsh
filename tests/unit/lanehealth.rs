@@ -313,3 +313,110 @@ fn migrations_stop_at_the_per_tick_limit() {
     let c = [lane(1, true, 0), lane(2, false, 5)];
     assert_eq!(migrations(&c, 2), vec![2, 2]);
 }
+
+/// Drive a lane that sits at `rtt_ms` for `secs` seconds, one sample a second.
+fn hold(h: &mut LaneHealth, t: &mut Instant, rtt_ms: u64, secs: u64) {
+    for _ in 0..secs {
+        feed(h, t, rtt_ms);
+        *t += ms(1000);
+        h.tick(*t);
+    }
+}
+
+#[test]
+fn a_throttle_that_outlasts_the_bucket_window_stays_degraded() {
+    // Without the freeze the buckets adopt the throttled RTT after about two
+    // bucket windows, the lane turns Healthy again, and the policy forgets a
+    // throttle that is still happening. 400 ms against an 80 ms baseline.
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+    let base = h.baseline_ms(t).unwrap();
+    assert!((base - 80.0).abs() < 1.0);
+
+    hold(&mut h, &mut t, 400, 5);
+    assert_eq!(h.state(), State::Degraded, "three bad ticks degraded it");
+
+    // Well past two buckets: the old code forgot the throttle here.
+    hold(&mut h, &mut t, 400, 400);
+    assert_eq!(
+        h.state(),
+        State::Degraded,
+        "a lasting throttle must not be adopted as the new baseline"
+    );
+    assert!(
+        (h.baseline_ms(t).unwrap() - 80.0).abs() < 1.0,
+        "baseline is still what the lane used to do: {:?}",
+        h.baseline_ms(t)
+    );
+    assert!(
+        h.inflation(t) > 4.0,
+        "still reads as throttled: {}",
+        h.inflation(t)
+    );
+}
+
+#[test]
+fn a_recovered_lane_unfreezes_and_re_baselines() {
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+    hold(&mut h, &mut t, 400, 5);
+    assert_eq!(h.state(), State::Degraded);
+
+    // Back to normal: 10 good ticks return it to Healthy.
+    let mut recovered = None;
+    for _ in 0..10 {
+        feed(&mut h, &mut t, 80);
+        let change = h.tick(t);
+        t += ms(1000);
+        if change.is_some() {
+            recovered = change;
+        }
+    }
+    assert_eq!(recovered, Some(State::Healthy));
+    assert_eq!(h.state(), State::Healthy);
+    assert!(
+        h.baseline_ms(t).is_some(),
+        "recovery must leave a usable baseline, not an empty window"
+    );
+    assert_eq!(h.inflation(t), 1.0, "healthy again, no inflation");
+
+    // A fresh baseline keeps tracking after recovery.
+    hold(&mut h, &mut t, 120, 10);
+    assert_eq!(h.state(), State::Healthy);
+    assert!(
+        h.baseline_ms(t).is_some_and(|b| b < 130.0),
+        "the unfrozen baseline follows the lane again: {:?}",
+        h.baseline_ms(t)
+    );
+}
+
+#[test]
+fn a_permanent_step_down_stays_degraded_until_reconnect() {
+    // The known cost of the freeze: a path that is permanently worse never
+    // re-baselines. choose() still uses it when no lane is healthy.
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+    hold(&mut h, &mut t, 400, 1000);
+    assert_eq!(h.state(), State::Degraded);
+    let c = [
+        Cand {
+            id: 1,
+            healthy: h.state() == State::Healthy,
+            srtt_ms: h.srtt_ms(),
+            streams: 0,
+        },
+        Cand {
+            id: 2,
+            healthy: false,
+            srtt_ms: Some(500.0),
+            streams: 0,
+        },
+    ];
+    assert!(
+        (0..20).all(|r| choose(&c, r, None).is_some()),
+        "a degraded-only pool still hands out a lane"
+    );
+}
