@@ -405,11 +405,13 @@ link_policy = "failover"
 #             whose RTT rises to 4 times its own baseline (and 150 ms or
 #             more) for 3 seconds counts as degraded and its streams move to
 #             a healthier lane; a steady slow lane is left alone. A degraded
-#             lane keeps the baseline it had, so a lasting throttle is not
-#             adopted as normal; it stays degraded until it recovers or
-#             reconnects. Migration needs resume = true. Under adaptive the
-#             ping period defaults to 2 s, because RTT growth is the signal
-#             it reads; the dead-lane timeout still follows `heartbeat`.
+#             lane keeps the baseline it had for up to 30 minutes, so a
+#             lasting throttle is not adopted as normal; past that it
+#             re-baselines at its current RTT and rejoins with a small share
+#             of new streams. Migration needs resume = true. Under adaptive
+#             the ping period defaults to 2 s, because RTT growth is the
+#             signal it reads; the dead-lane timeout still follows
+#             `heartbeat`.
 
 link_timeout = 10
 # How long, in seconds, one attempt on one link may take before the next link

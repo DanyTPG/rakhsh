@@ -83,11 +83,12 @@ come up on wss in 0.3-0.6 s.
   `link_policy = "adaptive"` is the answer to that: it watches each lane's RTT against that lane's own baseline, and a
   lane that stays at 4 times its baseline (and at least 150 ms worse) for 3 seconds is degraded, so its streams move to
   a lane that is still healthy. A steady slow lane is not degraded, only a lane that used to be fast and no longer is.
-- **A degraded lane keeps its old baseline.** The baseline is frozen at the value it had when the lane degraded, so a
-  throttle that lasts for minutes cannot be adopted as the new normal and quietly end the degradation. 10 good ticks
-  (within 2x of that frozen baseline) return the lane to healthy and unfreeze it. The cost: a path that is permanently
-  worse stays degraded until the lane reconnects. That is deliberate — such a lane is still used when no lane is
-  healthy.
+- **A degraded lane keeps its old baseline for up to 30 minutes.** The baseline is frozen at the value it had when the
+  lane degraded, so a throttle that lasts for minutes cannot be adopted as the new normal and quietly end the
+  degradation. 10 good ticks (within 2x of that frozen baseline) return the lane to healthy and unfreeze it. If it is
+  still degraded after 30 minutes the cap expires: the lane re-baselines at its current RTT and becomes healthy again,
+  so it gets a small share of new streams (the weight floor) rather than none. Without the cap a lane that settles at
+  2-4x its baseline could never leave degraded, and one above 4x would stay out for weeks.
 - A dialing process that is killed abruptly leaves its QUIC lanes alive on the accepting side until the 30 s dead-peer
   timer (a killed TCP lane is noticed at once). Restart the accepting side too, or wait, before judging a restart.
 - Which carrier works is the network's decision: links make the tunnel survive a blocked carrier, they do not
