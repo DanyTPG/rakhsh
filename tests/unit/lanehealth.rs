@@ -315,10 +315,15 @@ fn migrations_stop_at_the_per_tick_limit() {
 }
 
 /// Drive a lane that sits at `rtt_ms` for `secs` seconds, one sample a second.
+///
+/// Advances the fake clock exactly one second per iteration, so `secs` really
+/// is that many seconds of lane history.
 fn hold(h: &mut LaneHealth, t: &mut Instant, rtt_ms: u64, secs: u64) {
     for _ in 0..secs {
-        feed(h, t, rtt_ms);
-        *t += ms(1000);
+        let start = *t;
+        h.ping_sent(start);
+        h.pong_recv(start + ms(rtt_ms));
+        *t = start + ms(1000);
         h.tick(*t);
     }
 }
@@ -393,30 +398,85 @@ fn a_recovered_lane_unfreezes_and_re_baselines() {
 }
 
 #[test]
-fn a_permanent_step_down_stays_degraded_until_reconnect() {
-    // The known cost of the freeze: a path that is permanently worse never
-    // re-baselines. choose() still uses it when no lane is healthy.
+fn a_permanent_step_down_becomes_the_new_normal_at_the_cap() {
+    // The freeze is bounded on purpose. Past FREEZE_MAX the throttled RTT is
+    // adopted so the lane is not exiled for ever; it then gets a small share of
+    // new streams through the weight floor rather than none at all.
     let mut t = Instant::now();
     let mut h = LaneHealth::new(t);
     establish(&mut h, &mut t, 80, 3);
-    hold(&mut h, &mut t, 400, 1000);
-    assert_eq!(h.state(), State::Degraded);
-    let c = [
-        Cand {
-            id: 1,
-            healthy: h.state() == State::Healthy,
-            srtt_ms: h.srtt_ms(),
-            streams: 0,
-        },
-        Cand {
-            id: 2,
-            healthy: false,
-            srtt_ms: Some(500.0),
-            streams: 0,
-        },
-    ];
+    hold(&mut h, &mut t, 400, 30 * 60 - 60);
+    assert_eq!(
+        h.state(),
+        State::Degraded,
+        "still inside the cap, still held to the old baseline"
+    );
+
+    let mut recovered = None;
+    for _ in 0..180 {
+        feed(&mut h, &mut t, 400);
+        if let Some(s) = h.tick(t) {
+            recovered = Some(s);
+        }
+        t += ms(1000);
+        if recovered.is_some() {
+            break;
+        }
+    }
+    assert_eq!(recovered, Some(State::Healthy));
+    assert_eq!(h.state(), State::Healthy);
     assert!(
-        (0..20).all(|r| choose(&c, r, None).is_some()),
-        "a degraded-only pool still hands out a lane"
+        h.baseline_ms(t).is_some_and(|b| b > 350.0),
+        "the new baseline is the throttled RTT: {:?}",
+        h.baseline_ms(t)
+    );
+    assert_eq!(h.inflation(t), 1.0, "no longer reads as inflated");
+}
+
+#[test]
+fn a_throttle_under_the_cap_is_still_degraded() {
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+    hold(&mut h, &mut t, 400, 25 * 60);
+    assert_eq!(h.state(), State::Degraded);
+    assert!(
+        (h.baseline_ms(t).unwrap() - 80.0).abs() < 1.0,
+        "the 160 s forgetting problem stays fixed inside the cap"
+    );
+}
+
+#[test]
+fn a_new_spike_after_the_cap_degrades_again() {
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+    hold(&mut h, &mut t, 400, 30 * 60 + 30);
+    assert_eq!(h.state(), State::Healthy, "the cap adopted 400 ms");
+
+    hold(&mut h, &mut t, 1800, 4);
+    assert_eq!(
+        h.state(),
+        State::Degraded,
+        "the lane can still be caught degrading against its new baseline"
+    );
+}
+
+#[test]
+fn a_sustained_middling_rtt_can_recover_at_the_cap() {
+    // A lane that settles at 2x-4x its baseline cannot satisfy the 10-good-tick
+    // rule against the frozen value, so the cap is what lets it back in.
+    let mut t = Instant::now();
+    let mut h = LaneHealth::new(t);
+    establish(&mut h, &mut t, 80, 3);
+    hold(&mut h, &mut t, 400, 5);
+    assert_eq!(h.state(), State::Degraded);
+
+    hold(&mut h, &mut t, 200, 31 * 60);
+    assert_eq!(h.state(), State::Healthy);
+    assert!(
+        h.baseline_ms(t).is_some_and(|b| b > 150.0),
+        "re-baselined at about 200 ms: {:?}",
+        h.baseline_ms(t)
     );
 }

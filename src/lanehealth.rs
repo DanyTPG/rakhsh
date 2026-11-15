@@ -2,6 +2,10 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 pub const BUCKET: Duration = Duration::from_secs(150);
+/// Longest a lane may be held against its old baseline. Past this the current
+/// RTT becomes the new normal, so a throttle that never lifts costs a lane its
+/// best share but never removes it from the pool for good.
+pub const FREEZE_MAX: Duration = Duration::from_secs(30 * 60);
 pub const BAD_INFLATION: f64 = 4.0;
 pub const BAD_EXTRA_MS: f64 = 150.0;
 pub const GOOD_INFLATION: f64 = 2.0;
@@ -34,6 +38,8 @@ pub struct LaneHealth {
     /// Baseline held while Degraded, so a lasting throttle is never adopted
     /// as the new normal. Cleared when the lane recovers.
     frozen: Option<f64>,
+    /// When the freeze began, so it can expire after `FREEZE_MAX`.
+    frozen_at: Option<Instant>,
     pending: VecDeque<Instant>,
     bad_ticks: u32,
     good_ticks: u32,
@@ -50,6 +56,7 @@ impl LaneHealth {
             cur_min: None,
             prev_min: None,
             frozen: None,
+            frozen_at: None,
             pending: VecDeque::new(),
             bad_ticks: 0,
             good_ticks: 0,
@@ -146,6 +153,16 @@ impl LaneHealth {
         if self.samples < MIN_SAMPLES {
             return None;
         }
+        // A throttle that outlasts the cap becomes the new normal. Without
+        // this, a lane that settles at 2x-4x its old baseline can never leave
+        // Degraded, and a lane above 4x would stay out for weeks.
+        if self.state == State::Degraded
+            && self
+                .frozen_at
+                .is_some_and(|t| now.duration_since(t) >= FREEZE_MAX)
+        {
+            return Some(self.recover(now));
+        }
         let (Some(cur), Some(base)) = (self.cur_ms(now), self.baseline_ms(now)) else {
             return None;
         };
@@ -161,6 +178,7 @@ impl LaneHealth {
                 // Freeze what the lane could do before the throttle began, so
                 // the buckets cannot quietly adopt the new, slower RTT.
                 self.frozen = Some(base);
+                self.frozen_at = Some(now);
                 self.state = State::Degraded;
                 self.bad_ticks = 0;
                 self.good_ticks = 0;
@@ -170,24 +188,30 @@ impl LaneHealth {
             self.bad_ticks = 0;
             self.good_ticks += 1;
             if self.state == State::Degraded && self.good_ticks >= EXIT_TICKS {
-                self.state = State::Healthy;
-                self.frozen = None;
-                // Re-seed the buckets at now. While Degraded the buckets kept
-                // advancing against the frozen value, so bucket_start can be
-                // far behind; rolling forward from here would wipe cur_min and
-                // briefly leave no baseline at all.
-                self.bucket_start = now;
-                self.prev_min = None;
-                self.cur_min = self.last_ms;
-                self.bad_ticks = 0;
-                self.good_ticks = 0;
-                return Some(self.state);
+                return Some(self.recover(now));
             }
         } else {
             self.bad_ticks = 0;
             self.good_ticks = 0;
         }
         None
+    }
+
+    /// Leave Degraded and re-seed the buckets at `now`.
+    ///
+    /// The buckets kept advancing against the frozen value, so `bucket_start`
+    /// can be far behind; rolling forward from there would wipe `cur_min` and
+    /// briefly leave no baseline at all.
+    fn recover(&mut self, now: Instant) -> State {
+        self.state = State::Healthy;
+        self.frozen = None;
+        self.frozen_at = None;
+        self.bucket_start = now;
+        self.prev_min = None;
+        self.cur_min = self.last_ms;
+        self.bad_ticks = 0;
+        self.good_ticks = 0;
+        self.state
     }
 
     #[cfg(test)]
