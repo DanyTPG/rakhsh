@@ -56,7 +56,7 @@ rakhsh check -c entry.toml        # lists the links, in order
 | `link_policy` | `"failover"` | `"failover"`: every lane prefers the first link that works. `"spread"`: lane *n* prefers link *n mod links*. `"adaptive"`: new streams spread across the links by load and RTT, and a lane whose RTT rises to 4 times its baseline (and 150 ms or more) for 3 seconds is degraded, so its streams move to a healthier lane. With `resume = false` there is no migration. |
 | `link_timeout` | `10` | seconds one attempt (dial + handshake) may take |
 | `link_probe` | `30` | seconds between checks for a better link while on a fallback; `0` = never move back |
-| `heartbeat` | `10`, `2` under `adaptive` | seconds between pings on a lane; the adaptive policy needs a fast RTT signal, so it defaults to 2 s (jittered by 80%-120%) unless set here |
+| `heartbeat` | `10`, pings `2` under `adaptive` | `heartbeat` sets the dead-lane timeout: a silent lane is dropped after `max(3 x max(heartbeat, 5), 15 s)`. Under `adaptive` only the *ping period* drops to 2 s (jittered by 80%-120%) so RTT growth shows up in seconds; the dead-lane timeout still follows the 10 s default. Setting `heartbeat` yourself sets both. |
 
 A `[[link]]` may override `sni`, `ws_path`, `ws_credential`, `decoy`, `edge_ip`, `tls_fingerprint`, `cert_path`,
 `key_path`, `quic_mask`, `quic_version` and `reliability`; everything else is inherited from the top level, which is
